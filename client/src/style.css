@@ -1831,3 +1831,105 @@ footer {
     font-size: 8px;
   }
 }
+
+/* =========================================================
+   FINAL HOME POLISH — reference layout
+   Keeps the user's Droid Arabic Kufi implementation intact.
+   ========================================================= */
+
+/* Header: compact, no artificial top gap. */
+header { margin: 0; }
+.nav { max-width: 1400px; min-height: 72px; padding: 4px 30px; }
+.brand { min-width: 285px; }
+.brand b { font-size: 23px; }
+.brand small { font-size: 10px; }
+nav { gap: 28px; font-size: 14px; }
+.nav-actions { gap: 10px; }
+.nav-call, .nav-order { height: 46px; padding: 0 20px; font-size: 13px; }
+
+/* Hero: food image visually reaches the left edge, copy stays on the right. */
+.hero { max-width: 1400px; }
+.hero-redesign {
+  min-height: 360px;
+  padding: 0;
+  grid-template-columns: 1fr 0.95fr;
+  gap: 20px;
+}
+.hero-food {
+  height: 360px;
+  border-radius: 0;
+  background: transparent;
+}
+.hero-food img { padding: 0; }
+.hero-copy { padding: 0 28px 0 10px; }
+.hero-brand-line { gap: 18px; }
+.hero-logo { width: 145px; height: 105px; }
+.hero h1 {
+  font-size: clamp(48px, 5.3vw, 76px);
+  line-height: 1.08;
+  margin-bottom: 4px;
+}
+.hero p { font-size: 18px; line-height: 1.8; }
+.hero-actions { margin-top: 22px; gap: 12px; }
+.hero-actions .btn { min-width: 180px; height: 50px; }
+
+/* Sections: tighter rhythm like the reference. */
+.section { max-width: 1400px; padding: 12px 42px; }
+.compact-section { padding-top: 10px; padding-bottom: 10px; }
+.section-head { margin-bottom: 8px; }
+.section h2 { font-size: 27px; }
+
+/* Category cards: clean 4-column presentation. */
+.category-cards { gap: 14px; }
+.category-card { min-height: 190px; padding: 8px; border-radius: 17px; }
+.category-card img, .category-placeholder { height: 140px; border-radius: 14px; }
+.category-card b { font-size: 17px; }
+
+/* Popular items: slightly taller and closer to reference. */
+.popular-grid { gap: 14px; }
+.popular-item { min-height: 165px; grid-template-columns: 43% 57%; }
+.popular-image { min-height: 165px; }
+.popular-body { padding: 12px; }
+.popular-body h3 { font-size: 17px; }
+.popular-body p { font-size: 10px; line-height: 1.75; }
+
+/* Hide secondary strips when they would create unnecessary whitespace. */
+.info-strip { margin-top: 4px; margin-bottom: 12px; }
+
+@media (max-width: 1050px) {
+  .nav { padding: 4px 18px; }
+  .brand { min-width: 230px; }
+  nav { gap: 14px; font-size: 11px; }
+  .hero-redesign { min-height: 330px; }
+  .hero-food { height: 330px; }
+  .hero-copy { padding-right: 18px; }
+  .hero h1 { font-size: clamp(40px, 5.5vw, 62px); }
+  .hero p { font-size: 15px; }
+  .section { padding-left: 24px; padding-right: 24px; }
+  .category-card { min-height: 170px; }
+  .category-card img, .category-placeholder { height: 120px; }
+}
+
+@media (max-width: 850px) {
+  .hero-redesign { min-height: auto; padding: 8px 14px 14px; gap: 4px; }
+  .hero-copy { padding: 0; }
+  .hero-food { height: 225px; }
+  .hero h1 { font-size: 38px; }
+  .hero p { font-size: 13px; }
+  .hero-logo { width: 105px; height: 78px; }
+  .hero-actions { margin-top: 14px; }
+  .hero-actions .btn { height: 44px; }
+  .category-card { min-height: 145px; }
+}
+
+@media (max-width: 560px) {
+  .hero-redesign { padding: 5px 10px 10px; }
+  .hero h1 { font-size: 30px; }
+  .hero p { font-size: 10px; }
+  .hero-food { height: 185px; }
+  .hero-logo { width: 88px; height: 68px; }
+  .section { padding-left: 10px; padding-right: 10px; }
+  .category-card { min-height: 125px; }
+  .category-card img, .category-placeholder { height: 82px; }
+  .category-card b { font-size: 11px; }
+}
