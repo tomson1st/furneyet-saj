@@ -44,7 +44,7 @@ function Orders({data,refresh}){
   const dateKey=d=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Beirut',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
   const todayKey=dateKey(new Date());
   const getBeirutParts=d=>{
-    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Beirut',year:'numeric',month:'numeric',day:'numeric',weekday:'numeric'}).formatToParts(d);
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Beirut',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(d);
     return Object.fromEntries(parts.filter(x=>x.type!=='literal').map(x=>[x.type,Number(x.value)]));
   };
   const matchesDate=(order)=>{

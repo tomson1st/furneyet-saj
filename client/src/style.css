@@ -1914,17 +1914,17 @@ footer {
 .legend-item.status-delivered i { background: #16a34a; }
 .legend-item.status-cancelled i { background: #ef4444; }
 .order-row td:first-child { border-inline-start: 4px solid transparent; }
-.status-row-new td { background: rgba(59,130,246,.055); }
+.status-row-new td { background: rgba(59,130,246,.18); }
 .status-row-new td:first-child { border-inline-start-color: #3b82f6; }
-.status-row-confirmed td { background: rgba(139,92,246,.055); }
+.status-row-confirmed td { background: rgba(139,92,246,.18); }
 .status-row-confirmed td:first-child { border-inline-start-color: #8b5cf6; }
-.status-row-preparing td { background: rgba(245,158,11,.07); }
+.status-row-preparing td { background: rgba(245,158,11,.18); }
 .status-row-preparing td:first-child { border-inline-start-color: #f59e0b; }
-.status-row-ready td { background: rgba(16,185,129,.065); }
+.status-row-ready td { background: rgba(16,185,129,.18); }
 .status-row-ready td:first-child { border-inline-start-color: #10b981; }
-.status-row-delivered td { background: rgba(22,163,74,.055); }
+.status-row-delivered td { background: rgba(22,163,74,.18); }
 .status-row-delivered td:first-child { border-inline-start-color: #16a34a; }
-.status-row-cancelled td { background: rgba(239,68,68,.06); }
+.status-row-cancelled td { background: rgba(239,68,68,.18); }
 .status-row-cancelled td:first-child { border-inline-start-color: #ef4444; }
 .status-select {
   font-family: inherit;
