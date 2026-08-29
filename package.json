@@ -1,0 +1,29 @@
+{
+  "name": "furneyet-saj-manakish",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "nodemon server/index.js",
+    "client:dev": "vite --config client/vite.config.js",
+    "build": "vite build --config client/vite.config.js",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "nodemon": "^3.1.9",
+    "vite": "^6.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.511.0"
+  }
+}
