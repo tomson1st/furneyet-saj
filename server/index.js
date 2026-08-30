@@ -349,6 +349,19 @@ app.post('/api/orders', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+app.get('/api/orders/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const phone = String(req.query.phone || '').replace(/\D/g, '');
+    if (!Number.isInteger(id) || id <= 0 || !phone) return res.status(400).json({ error: 'رقم الطلب ورقم الهاتف مطلوبان' });
+    const { rows } = await query('SELECT id, customer_phone, status, total FROM orders WHERE id=$1', [id]);
+    const order = rows[0];
+    if (!order || String(order.customer_phone).replace(/\D/g, '') !== phone) return res.status(404).json({ error: 'لم يتم العثور على طلب مطابق' });
+    const s = await getSettings();
+    res.json({ id: Number(order.id), status: order.status || 'new', total: Number(order.total), currency: s.currency });
+  } catch (e) { next(e); }
+});
+
 app.post('/api/auth/login', async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
