@@ -2101,3 +2101,19 @@ footer {
   .menu-grid { grid-template-columns: 1fr; }
   .menu-item-image { height: 180px; }
 }
+
+/* Item/offer display ordering control. Lower numbers appear first. */
+.sort-order-field {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sort-order-field input {
+  width: 100%;
+}
+.sort-order-field small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
