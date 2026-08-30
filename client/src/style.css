@@ -2371,3 +2371,316 @@ footer {
 .offer-content{flex:1;min-width:0}
 .offer-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px}
 .offer-add{flex:0 0 auto}
+
+/* =========================================================
+   PRODUCT CARD GLASS REDESIGN
+   Full-bleed image + translucent glass information panel.
+   Applies consistently to popular, newest and full-menu cards.
+   ========================================================= */
+.product-glass-card {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  min-height: 255px;
+  height: 255px;
+  overflow: hidden;
+  border: 1px solid rgba(234, 223, 213, .95);
+  border-radius: 18px;
+  background: #f8f2e9;
+  box-shadow: 0 8px 24px rgba(60, 35, 20, .07);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.product-glass-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(60, 35, 20, .12);
+}
+.product-glass-card::after {
+  content: "";
+  position: absolute;
+  inset: 38% 0 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(18, 12, 8, 0), rgba(18, 12, 8, .12) 24%, rgba(18, 12, 8, .48) 100%);
+}
+.product-glass-card .popular-image,
+.product-glass-card .menu-item-image {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #f8f2e9;
+}
+.product-glass-card .popular-image img,
+.product-glass-card .popular-image .food-placeholder,
+.product-glass-card .menu-item-image img,
+.product-glass-card .menu-item-image .food-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.product-glass-card .popular-image .food-placeholder,
+.product-glass-card .menu-item-image .food-placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 58px;
+  background: #fffaf4;
+}
+.product-glass-body {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  min-height: 42%;
+  padding: 12px 13px 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  color: var(--text);
+  background: rgba(255, 252, 247, .78);
+  border-top: 1px solid rgba(255, 255, 255, .58);
+  backdrop-filter: blur(14px) saturate(125%);
+  -webkit-backdrop-filter: blur(14px) saturate(125%);
+}
+.product-glass-body h3 {
+  margin: 2px 0 3px;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 800;
+}
+.product-glass-body p {
+  margin: 0;
+  min-height: 0;
+  max-height: 2.9em;
+  overflow: hidden;
+  color: #665d55;
+  font-size: 10px;
+  line-height: 1.65;
+}
+.product-glass-body .mini-badge {
+  position: absolute;
+  top: -11px;
+  right: 12px;
+  z-index: 3;
+  padding: 4px 8px;
+  box-shadow: 0 2px 8px rgba(60, 35, 20, .08);
+}
+.product-glass-body .item-foot {
+  padding-top: 7px;
+}
+.product-glass-body .item-foot strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.product-glass-body .add {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(234, 223, 213, .9);
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 2px 8px rgba(60, 35, 20, .08);
+}
+
+/* Replace the old split layouts with the same full-bleed card system. */
+.popular-item.product-glass-card,
+.menu-item-card.product-glass-card {
+  grid-template-columns: none;
+}
+.menu-item-card.product-glass-card .menu-item-body,
+.popular-item.product-glass-card .popular-body {
+  padding: 12px 13px 11px;
+}
+
+/* Keep image treatment consistent across every product presentation. */
+.popular-grid,
+.menu-grid {
+  align-items: stretch;
+}
+
+@media (max-width: 850px) {
+  .product-glass-card {
+    min-height: 235px;
+    height: 235px;
+  }
+  .popular-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .product-glass-card {
+    min-height: 225px;
+    height: 225px;
+    border-radius: 16px;
+  }
+  .popular-grid,
+  .menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .product-glass-body {
+    min-height: 48%;
+    padding: 10px 10px 9px;
+    backdrop-filter: blur(11px) saturate(120%);
+    -webkit-backdrop-filter: blur(11px) saturate(120%);
+  }
+  .product-glass-body h3 {
+    font-size: 13px;
+  }
+  .product-glass-body p {
+    font-size: 9px;
+  }
+  .product-glass-body .item-foot strong {
+    font-size: 11px;
+  }
+  .product-glass-body .add {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-glass-card {
+    transition: none;
+  }
+}
+
+/* =========================================================
+   Product cards: full-bleed image + glass information overlay
+   ========================================================= */
+.product-glass-card {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  min-height: 255px;
+  height: 255px;
+  overflow: hidden;
+  border: 1px solid rgba(234, 223, 213, .95);
+  border-radius: 18px;
+  background: #f8f2e9;
+  box-shadow: 0 8px 24px rgba(60, 35, 20, .07);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.product-glass-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(60, 35, 20, .12);
+}
+.product-glass-card::after {
+  content: "";
+  position: absolute;
+  inset: 36% 0 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(18, 12, 8, 0), rgba(18, 12, 8, .12) 22%, rgba(18, 12, 8, .46) 100%);
+}
+.product-glass-card .popular-image,
+.product-glass-card .menu-item-image {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #f8f2e9;
+}
+.product-glass-card .popular-image img,
+.product-glass-card .popular-image .food-placeholder,
+.product-glass-card .menu-item-image img,
+.product-glass-card .menu-item-image .food-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.product-glass-card .popular-image .food-placeholder,
+.product-glass-card .menu-item-image .food-placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 58px;
+  background: #fffaf4;
+}
+.product-glass-body {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  min-height: 43%;
+  padding: 12px 13px 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  color: var(--text);
+  background: rgba(255, 252, 247, .80);
+  border-top: 1px solid rgba(255, 255, 255, .62);
+  backdrop-filter: blur(14px) saturate(125%);
+  -webkit-backdrop-filter: blur(14px) saturate(125%);
+}
+.product-glass-body h3 {
+  margin: 2px 0 3px;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 800;
+}
+.product-glass-body p {
+  margin: 0;
+  min-height: 0;
+  max-height: 2.9em;
+  overflow: hidden;
+  color: #665d55;
+  font-size: 10px;
+  line-height: 1.65;
+}
+.product-glass-body .mini-badge {
+  position: absolute;
+  top: -11px;
+  right: 12px;
+  z-index: 3;
+  padding: 4px 8px;
+  box-shadow: 0 2px 8px rgba(60, 35, 20, .08);
+}
+.product-glass-body .item-foot {
+  padding-top: 7px;
+}
+.product-glass-body .item-foot strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.product-glass-body .add {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(234, 223, 213, .9);
+  background: rgba(255, 255, 255, .92);
+  box-shadow: 0 2px 8px rgba(60, 35, 20, .08);
+}
+.popular-item.product-glass-card,
+.menu-item-card.product-glass-card {
+  grid-template-columns: none;
+}
+.menu-item-card.product-glass-card .menu-item-body,
+.popular-item.product-glass-card .popular-body {
+  padding: 12px 13px 11px;
+}
+.popular-grid,
+.menu-grid {
+  align-items: stretch;
+}
+@media (max-width: 850px) {
+  .product-glass-card { min-height: 235px; height: 235px; }
+  .popular-grid, .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .product-glass-card { min-height: 225px; height: 225px; border-radius: 16px; }
+  .popular-grid, .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .product-glass-body { min-height: 48%; padding: 10px 10px 9px; backdrop-filter: blur(11px) saturate(120%); -webkit-backdrop-filter: blur(11px) saturate(120%); }
+  .product-glass-body h3 { font-size: 13px; }
+  .product-glass-body p { font-size: 9px; }
+  .product-glass-body .item-foot strong { font-size: 11px; }
+  .product-glass-body .add { width: 32px; height: 32px; }
+}
+@media (prefers-reduced-motion: reduce) { .product-glass-card { transition: none; } }
