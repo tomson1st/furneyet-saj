@@ -358,37 +358,74 @@ app.get('/api/store', async (req, res, next) => {
 app.post('/api/orders', async (req, res, next) => {
   try {
     const { customerName, customerPhone, address = '', notes = '', items = [] } = req.body || {};
-    if (!customerName || !customerPhone || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'يرجى إدخال الاسم والهاتف واختيار صنف واحد على الأقل' });
-    const ids = items.map(x => Number(x.itemId)).filter(Boolean);
-    if (!ids.length) return res.status(400).json({ error: 'الأصناف المختارة غير متاحة حالياً' });
-    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
-    const { rows } = await query(`SELECT * FROM items WHERE id IN (${placeholders}) AND available=true`, ids);
-    const map = new Map(rows.map(r => [Number(r.id), r]));
-    const normalized = []; let total = 0;
-    for (const x of items) {
-      const r = map.get(Number(x.itemId));
-      const qty = Math.max(1, Math.min(99, Number(x.quantity) || 1));
-      if (!r) continue;
-      normalized.push({ itemId: Number(r.id), name: r.name, price: Number(r.price), quantity: qty });
-      total += Number(r.price) * qty;
+    if (!customerName || !customerPhone || !Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: 'يرجى إدخال الاسم والهاتف واختيار صنف واحد على الأقل' });
     }
-    if (!normalized.length) return res.status(400).json({ error: 'الأصناف المختارة غير متاحة حالياً' });
+
+    const itemIds = items.map(x => Number(x.itemId)).filter(n => Number.isInteger(n) && n > 0);
+    const offerIds = items
+      .map(x => Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN)))
+      .filter(n => Number.isInteger(n) && n > 0);
+
+    const itemRows = itemIds.length
+      ? (await query(`SELECT * FROM items WHERE id IN (${itemIds.map((_, i) => `$${i + 1}`).join(',')}) AND available=true`, itemIds)).rows
+      : [];
+    const offerRows = offerIds.length
+      ? (await query(`SELECT * FROM offers WHERE id IN (${offerIds.map((_, i) => `$${i + 1}`).join(',')})`, offerIds)).rows
+      : [];
+
+    const itemMap = new Map(itemRows.map(r => [Number(r.id), r]));
+    const offerMap = new Map(offerRows.map(r => [Number(r.id), r]));
+    const normalized = [];
+    let total = 0;
+
+    for (const x of items) {
+      const qty = Math.max(1, Math.min(99, Number(x.quantity) || 1));
+      const numericItemId = Number(x.itemId);
+      const offerId = Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN));
+
+      if (Number.isInteger(offerId) && offerId > 0 && offerMap.has(offerId)) {
+        const o = offerMap.get(offerId);
+        const price = Number(o.price);
+        normalized.push({ itemId: `offer-${offerId}`, offerId, name: o.title, price, quantity: qty, type: 'offer' });
+        total += price * qty;
+        continue;
+      }
+
+      if (Number.isInteger(numericItemId) && numericItemId > 0 && itemMap.has(numericItemId)) {
+        const r = itemMap.get(numericItemId);
+        const price = Number(r.price);
+        normalized.push({ itemId: Number(r.id), name: r.name, price, quantity: qty, type: 'item' });
+        total += price * qty;
+      }
+    }
+
+    if (!normalized.length) {
+      return res.status(400).json({ error: 'الأصناف أو العروض المختارة غير متاحة حالياً' });
+    }
+
     const result = await query(
       'INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',
       [customerName, customerPhone, address, notes, JSON.stringify(normalized), total]
     );
     const id = Number(result.rows[0].id);
+
     await query(
       'INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',
       [id, null, 'new', null, 'الزبون']
     );
+
     let whatsappSent = false;
     try {
       whatsappSent = await sendWhatsAppOrder({ id, customerName, customerPhone, address, notes, items: normalized, total });
       if (whatsappSent) await query('UPDATE orders SET whatsapp_sent=true WHERE id=$1', [id]);
     } catch (e) { console.error('WhatsApp error:', e.message); }
+
     const s = await getSettings();
-    const waLink = s.phone ? `https://wa.me/${String(s.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`مرحباً ${customerName}، تم استلام طلبك رقم #${id} بقيمة ${total} ${s.currency}.`)}` : '';
+    const waLink = s.phone
+      ? `https://wa.me/${String(s.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`مرحباً ${customerName}، تم استلام طلبك رقم #${id} بقيمة ${total} ${s.currency}.`)}`
+      : '';
+
     res.status(201).json({ id, total, whatsappSent, waLink });
   } catch (e) { next(e); }
 });
