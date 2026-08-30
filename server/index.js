@@ -244,6 +244,60 @@ app.post('/api/admin/upload-image', auth, requirePerm('MANAGE_ITEMS'), async (re
   }
 });
 
+
+// Upload the site logo. This endpoint is separate from item uploads so a
+// settings-only employee can manage the logo without receiving item rights.
+app.post('/api/admin/upload-logo', auth, requirePerm('MANAGE_SETTINGS'), async (req, res) => {
+  try {
+    const { dataUrl, fileName = 'logo' } = req.body || {};
+    if (!dataUrl || typeof dataUrl !== 'string') return res.status(400).json({ error: 'صورة الشعار مطلوبة.' });
+    const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: 'نوع الشعار غير مدعوم. استخدم JPG أو PNG أو WEBP أو GIF.' });
+
+    const supabaseUrl = String(process.env.SUPABASE_URL || '').trim().replace(/\/$/, '');
+    const serviceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+    const bucket = String(process.env.SUPABASE_STORAGE_BUCKET || 'furneyet-saj').trim();
+    if (!supabaseUrl || !serviceKey) {
+      return res.status(500).json({ error: 'إعدادات رفع الصور غير مكتملة في Render. يجب إضافة SUPABASE_URL و SUPABASE_SERVICE_ROLE_KEY.' });
+    }
+    const bytes = Buffer.from(match[2], 'base64');
+    if (!bytes.length) return res.status(400).json({ error: 'ملف الشعار فارغ أو تالف.' });
+    if (bytes.length > 4 * 1024 * 1024) return res.status(400).json({ error: 'حجم الشعار يجب ألا يتجاوز 4MB.' });
+
+    const ext = {'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'}[match[1]];
+    const safeBase = String(fileName).replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 50) || 'logo';
+    const objectPath = `logos/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeBase}.${ext}`;
+    const authHeaders = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
+
+    const bucketCheck = await fetch(`${supabaseUrl}/storage/v1/bucket/${encodeURIComponent(bucket)}`, {headers:authHeaders});
+    if (!bucketCheck.ok && bucketCheck.status !== 404) {
+      const text = await bucketCheck.text().catch(()=> '');
+      return res.status(500).json({error:`تعذر الوصول إلى Storage Bucket «${bucket}».`,details:text.slice(0,300)});
+    }
+    if (bucketCheck.status === 404) {
+      const create = await fetch(`${supabaseUrl}/storage/v1/bucket`, {method:'POST',headers:{...authHeaders,'Content-Type':'application/json'},body:JSON.stringify({id:bucket,name:bucket,public:true})});
+      if (!create.ok && create.status !== 409) {
+        const text = await create.text().catch(()=> '');
+        return res.status(500).json({error:`تعذر إنشاء Storage Bucket «${bucket}».`,details:text.slice(0,300)});
+      }
+    }
+
+    const upload = await fetch(`${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`, {
+      method:'POST', headers:{...authHeaders,'Content-Type':match[1],'x-upsert':'false','cache-control':'3600'}, body:bytes
+    });
+    if (!upload.ok) {
+      const text = await upload.text().catch(()=> '');
+      return res.status(500).json({error:'فشل رفع الشعار إلى Supabase Storage.',details:text.slice(0,500)});
+    }
+    const url = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath}`;
+    console.log(`[upload-logo] Success: ${objectPath}`);
+    return res.json({url});
+  } catch (e) {
+    console.error('[upload-logo] Unexpected error:', e);
+    return res.status(500).json({error:'حدث خطأ غير متوقع أثناء رفع الشعار.',details:String(e?.message||e).slice(0,500)});
+  }
+});
+
 app.get('/api/store', async (req, res, next) => {
   try {
     const settings = publicSettings(await getSettings());
