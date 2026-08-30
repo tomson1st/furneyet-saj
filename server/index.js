@@ -370,7 +370,7 @@ app.post('/api/customer/register',orderLimiter,async(req,res,next)=>{try{const n
 app.post('/api/customer/login',loginLimiter,async(req,res,next)=>{try{const id=String(req.body?.identifier||'').trim(),pw=String(req.body?.password||''),q=await query('SELECT * FROM customer_users WHERE (phone=$1 OR LOWER(email)=LOWER($1)) AND active=true',[id]),u=q.rows[0];if(!u||!bcrypt.compareSync(pw,u.password_hash))return res.status(401).json({error:'بيانات الدخول غير صحيحة'});setCookie(res,'customer_session',customerTokenFor(u),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});const c=crypto.randomBytes(32).toString('hex');setCookie(res,'customer_csrf',c,{secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});res.json({user:{id:Number(u.id),name:u.name,phone:u.phone,email:u.email}})}catch(e){next(e)}});
 app.get('/api/customer/me',customerAuth,async(req,res,next)=>{try{const [a,f,l]=await Promise.all([query('SELECT id,label,address,is_default FROM customer_addresses WHERE customer_user_id=$1 ORDER BY is_default DESC,id',[req.customer.id]),query('SELECT item_id FROM favorites WHERE customer_user_id=$1',[req.customer.id]),query('SELECT points FROM loyalty_accounts WHERE customer_user_id=$1',[req.customer.id])]);res.json({user:req.customer,addresses:a.rows,favorites:f.rows.map(x=>Number(x.item_id)),points:Number(l.rows[0]?.points||0)})}catch(e){next(e)}});
 app.post('/api/customer/logout',customerAuth,requireCustomerCsrf,(req,res)=>{clearCookie(res,'customer_session');clearCookie(res,'customer_csrf');res.json({ok:true})});
-app.post('/api/customer/addresses',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const label=String(req.body?.label||'').trim(),address=String(req.body?.address||'').trim();if(!label||!address||address.length>300)return res.status(400).json({error:'بيانات العنوان غير صالحة'});const existing=await query('SELECT COUNT(*)::int AS count FROM customer_addresses WHERE customer_user_id=$1',[req.customer.id]);const makeDefault=!!req.body?.is_default || Number(existing.rows[0].count)===0;const r=await query('INSERT INTO customer_addresses(customer_user_id,label,address,is_default) VALUES($1,$2,$3,$4) RETURNING id,label,address,is_default',[req.customer.id,label,address,makeDefault]);if(makeDefault)await query('UPDATE customer_addresses SET is_default=false WHERE customer_user_id=$1 AND id<>$2',[req.customer.id,r.rows[0].id]);res.status(201).json(r.rows[0])}catch(e){next(e)}});
+app.post('/api/customer/addresses',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const label=String(req.body?.label||'').trim(),address=String(req.body?.address||'').trim();if(!label||!address||address.length>300)return res.status(400).json({error:'بيانات العنوان غير صالحة'});const r=await query('INSERT INTO customer_addresses(customer_user_id,label,address,is_default) VALUES($1,$2,$3,$4) RETURNING id,label,address,is_default',[req.customer.id,label,address,!!req.body?.is_default]);if(req.body?.is_default)await query('UPDATE customer_addresses SET is_default=false WHERE customer_user_id=$1 AND id<>$2',[req.customer.id,r.rows[0].id]);res.status(201).json(r.rows[0])}catch(e){next(e)}});
 app.delete('/api/customer/addresses/:id',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{await query('DELETE FROM customer_addresses WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.customer.id]);res.json({ok:true})}catch(e){next(e)}});
 app.post('/api/customer/favorites/:itemId',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const id=Number(req.params.itemId),q=await query('SELECT 1 FROM favorites WHERE customer_user_id=$1 AND item_id=$2',[req.customer.id,id]);if(q.rows[0])await query('DELETE FROM favorites WHERE customer_user_id=$1 AND item_id=$2',[req.customer.id,id]);else await query('INSERT INTO favorites(customer_user_id,item_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[req.customer.id,id]);res.json({favorite:!q.rows[0]})}catch(e){next(e)}});
 app.get('/api/customer/orders',customerAuth,async(req,res,next)=>{try{const q=await query('SELECT * FROM orders WHERE customer_user_id=$1 ORDER BY id DESC LIMIT 100',[req.customer.id]);res.json({orders:q.rows.map(o=>({...o,id:Number(o.id),total:Number(o.total),items:JSON.parse(o.items_json)}))})}catch(e){next(e)}});
@@ -575,16 +575,8 @@ app.get('/api/store', async (req, res, next) => {
 
 app.post('/api/orders', orderLimiter, async (req, res, next) => {
   try {
-    let customerUserId = null;
-    try {
-      const token = parseCookies(req).customer_session || '';
-      const cp = jwt.verify(token, JWT_SECRET);
-      const cq = await query('SELECT id,name,phone,active FROM customer_users WHERE id=$1 AND active=true', [cp.id]);
-      if (cq.rows[0]) customerUserId = Number(cq.rows[0].id);
-    } catch {}
-    const customerRecord = customerUserId ? (await query('SELECT id,name,phone FROM customer_users WHERE id=$1 AND active=true', [customerUserId])).rows[0] : null;
-    const customerName = String(customerRecord?.name || req.body?.customerName || '').trim();
-    const customerPhone = String(customerRecord?.phone || req.body?.customerPhone || '').trim();
+    const customerName = String(req.body?.customerName || '').trim();
+    const customerPhone = String(req.body?.customerPhone || '').trim();
     const address = String(req.body?.address || '').trim();
     const notes = String(req.body?.notes || '').trim();
     const items = req.body?.items;
@@ -595,7 +587,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'بعض بيانات الطلب طويلة جداً' });
     }
 
-    const itemIds = items.map(x => Number(x.productId || x.itemId)).filter(n => Number.isInteger(n) && n > 0);
+    const itemIds = items.map(x => Number(x.itemId)).filter(n => Number.isInteger(n) && n > 0);
     const offerIds = items
       .map(x => Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN)))
       .filter(n => Number.isInteger(n) && n > 0);
@@ -618,7 +610,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
         return res.status(400).json({ error: 'كمية غير صالحة في الطلب' });
       }
       const qty = rawQty;
-      const numericItemId = Number(x.productId || x.itemId);
+      const numericItemId = Number(x.itemId);
       const offerId = Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN));
 
       if (Number.isInteger(offerId) && offerId > 0 && offerMap.has(offerId)) {
@@ -645,7 +637,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'قيمة الطلب غير صالحة' });
     }
 
-    
+    let customerUserId=null;try{const cp=jwt.verify(parseCookies(req).customer_session||'',JWT_SECRET);const cq=await query('SELECT id FROM customer_users WHERE id=$1 AND active=true',[cp.id]);customerUserId=cq.rows[0]?Number(cq.rows[0].id):null}catch{}
     const couponCode=String(req.body?.couponCode||'').trim().toUpperCase();let discount=0;if(couponCode){const cq=await query('SELECT * FROM coupons WHERE code=$1 AND active=true',[couponCode]),c=cq.rows[0];if(!c)return res.status(400).json({error:'رمز الخصم غير صالح'});if(Number(c.min_order)>total)return res.status(400).json({error:'الحد الأدنى للطلب غير متحقق'});discount=c.type==='percent'?Math.min(total,total*Number(c.value)/100):Math.min(total,Number(c.value))}
     const deliveryFee=Number(req.body?.deliveryFee||0);if(!Number.isFinite(deliveryFee)||deliveryFee<0)return res.status(400).json({error:'رسم التوصيل غير صالح'});const finalTotal=Math.max(0,total-discount)+deliveryFee;const estimated=new Date(Date.now()+45*60000);
     const result = await query('INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,coupon_code,estimated_ready_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',[customerName,customerPhone,address,notes,JSON.stringify(normalized),finalTotal,customerUserId,deliveryFee,couponCode||null,estimated]);
