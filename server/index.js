@@ -33,7 +33,12 @@ const settingDefaults = {
   background: '#fffaf3',
   theme: 'classic',
   whatsappEnabled: 'false',
-  whatsappRecipient: ''
+  whatsappRecipient: '',
+  loyaltyEnabled: 'true',
+  loyaltyEarnAmount: '10000',
+  loyaltyPointValue: '1000',
+  loyaltyMinRedeem: '10',
+  loyaltyMaxRedeemPercent: '50'
 };
 
 async function query(text, params = []) {
@@ -54,6 +59,11 @@ const SETTING_ALIASES = {
   theme_name: 'theme',
   whatsapp_enabled: 'whatsappEnabled',
   whatsapp_recipient: 'whatsappRecipient',
+  loyalty_enabled: 'loyaltyEnabled',
+  loyalty_earn_amount: 'loyaltyEarnAmount',
+  loyalty_point_value: 'loyaltyPointValue',
+  loyalty_min_redeem: 'loyaltyMinRedeem',
+  loyalty_max_redeem_percent: 'loyaltyMaxRedeemPercent',
   whatsapp_phone: 'whatsappRecipient'
 };
 
@@ -121,7 +131,7 @@ await query(`CREATE TABLE IF NOT EXISTS loyalty_transactions(id BIGSERIAL PRIMAR
 await query(`CREATE TABLE IF NOT EXISTS notifications(id BIGSERIAL PRIMARY KEY,customer_user_id BIGINT,order_id BIGINT,channel VARCHAR(20) NOT NULL,title VARCHAR(160) NOT NULL,body VARCHAR(1000) NOT NULL,sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),status VARCHAR(20) NOT NULL DEFAULT 'sent')`);
 await query(`CREATE TABLE IF NOT EXISTS audit_logs(id BIGSERIAL PRIMARY KEY,user_id BIGINT,action VARCHAR(120) NOT NULL,entity_type VARCHAR(60),entity_id BIGINT,details TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
 await query(`CREATE TABLE IF NOT EXISTS employee_schedules(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,weekday INTEGER NOT NULL CHECK(weekday BETWEEN 0 AND 6),start_time TIME,end_time TIME,active BOOLEAN NOT NULL DEFAULT TRUE,UNIQUE(user_id,weekday))`);
-await query('CREATE INDEX IF NOT EXISTS idx_orders_customer_user ON orders(customer_user_id)');await query('CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)');
+await query('CREATE INDEX IF NOT EXISTS idx_orders_customer_user ON orders(customer_user_id)');await query('CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)');await query('CREATE INDEX IF NOT EXISTS idx_loyalty_transactions_customer ON loyalty_transactions(customer_user_id, created_at DESC)');await query('CREATE UNIQUE INDEX IF NOT EXISTS idx_loyalty_earned_order ON loyalty_transactions(order_id) WHERE order_id IS NOT NULL AND points > 0');await query(`INSERT INTO loyalty_accounts(customer_user_id) SELECT id FROM customer_users ON CONFLICT DO NOTHING`);
 }
 function customerAuth(req,res,next){const t=parseCookies(req).customer_session;if(!t)return res.status(401).json({error:'يجب تسجيل الدخول'});try{const p=jwt.verify(t,JWT_SECRET);query('SELECT id,name,phone,email,active FROM customer_users WHERE id=$1',[p.id]).then(({rows})=>{const u=rows[0];if(!u||!u.active)return res.status(401).json({error:'الحساب غير فعال'});req.customer={id:Number(u.id),name:u.name,phone:u.phone,email:u.email};next()}).catch(next)}catch{return res.status(401).json({error:'انتهت الجلسة'})}}
 function customerTokenFor(u){return jwt.sign({id:Number(u.id),type:'customer'},JWT_SECRET,{expiresIn:'30d'})}
@@ -165,7 +175,8 @@ async function seed() {
 
 const PUBLIC_SETTING_KEYS = new Set([
   'siteName','tagline','logoUrl','phone','currency',
-  'primary','secondary','background','theme','whatsappEnabled','whatsappRecipient'
+  'primary','secondary','background','theme','whatsappEnabled','whatsappRecipient',
+  'loyaltyEnabled','loyaltyEarnAmount','loyaltyPointValue','loyaltyMinRedeem','loyaltyMaxRedeemPercent'
 ]);
 
 function publicSettings(s) {
@@ -174,6 +185,11 @@ function publicSettings(s) {
     if (Object.prototype.hasOwnProperty.call(s, key)) out[key] = s[key];
   }
   out.whatsappEnabled = s.whatsappEnabled === 'true';
+  out.loyaltyEnabled = s.loyaltyEnabled !== 'false';
+  out.loyaltyEarnAmount = Number(s.loyaltyEarnAmount || 10000);
+  out.loyaltyPointValue = Number(s.loyaltyPointValue || 1000);
+  out.loyaltyMinRedeem = Number(s.loyaltyMinRedeem || 10);
+  out.loyaltyMaxRedeemPercent = Number(s.loyaltyMaxRedeemPercent || 50);
   return out;
 }
 
@@ -368,7 +384,7 @@ app.use('/api', apiLimiter);
 
 app.post('/api/customer/register',orderLimiter,async(req,res,next)=>{try{const name=String(req.body?.name||'').trim(),phone=String(req.body?.phone||'').trim(),email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');if(!name||!phone||password.length<8)return res.status(400).json({error:'يرجى إدخال الاسم والهاتف وكلمة مرور من 8 أحرف على الأقل'});const r=await query('INSERT INTO customer_users(name,phone,email,password_hash) VALUES($1,$2,$3,$4) RETURNING id,name,phone,email',[name,phone,email||null,bcrypt.hashSync(password,12)]),u=r.rows[0];await query('INSERT INTO loyalty_accounts(customer_user_id) VALUES($1) ON CONFLICT DO NOTHING',[u.id]);setCookie(res,'customer_session',customerTokenFor(u),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});const c=crypto.randomBytes(32).toString('hex');setCookie(res,'customer_csrf',c,{secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});res.status(201).json({user:{id:Number(u.id),name:u.name,phone:u.phone,email:u.email}})}catch(e){if(e.code==='23505')return res.status(400).json({error:'رقم الهاتف أو البريد مستخدم مسبقاً'});next(e)}});
 app.post('/api/customer/login',loginLimiter,async(req,res,next)=>{try{const id=String(req.body?.identifier||'').trim(),pw=String(req.body?.password||''),q=await query('SELECT * FROM customer_users WHERE (phone=$1 OR LOWER(email)=LOWER($1)) AND active=true',[id]),u=q.rows[0];if(!u||!bcrypt.compareSync(pw,u.password_hash))return res.status(401).json({error:'بيانات الدخول غير صحيحة'});setCookie(res,'customer_session',customerTokenFor(u),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});const c=crypto.randomBytes(32).toString('hex');setCookie(res,'customer_csrf',c,{secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});res.json({user:{id:Number(u.id),name:u.name,phone:u.phone,email:u.email}})}catch(e){next(e)}});
-app.get('/api/customer/me',customerAuth,async(req,res,next)=>{try{const cookies=parseCookies(req);if(!cookies.customer_csrf){const c=crypto.randomBytes(32).toString('hex');setCookie(res,'customer_csrf',c,{secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});}const [a,f,l]=await Promise.all([query('SELECT id,label,address,is_default FROM customer_addresses WHERE customer_user_id=$1 ORDER BY is_default DESC,id',[req.customer.id]),query('SELECT item_id FROM favorites WHERE customer_user_id=$1',[req.customer.id]),query('SELECT points FROM loyalty_accounts WHERE customer_user_id=$1',[req.customer.id])]);res.json({user:req.customer,addresses:a.rows,favorites:f.rows.map(x=>Number(x.item_id)),points:Number(l.rows[0]?.points||0)})}catch(e){next(e)}});
+app.get('/api/customer/me',customerAuth,async(req,res,next)=>{try{const cookies=parseCookies(req);if(!cookies.customer_csrf){const c=crypto.randomBytes(32).toString('hex');setCookie(res,'customer_csrf',c,{secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});}const [a,f,l,t]=await Promise.all([query('SELECT id,label,address,is_default FROM customer_addresses WHERE customer_user_id=$1 ORDER BY is_default DESC,id',[req.customer.id]),query('SELECT item_id FROM favorites WHERE customer_user_id=$1',[req.customer.id]),query('SELECT points FROM loyalty_accounts WHERE customer_user_id=$1',[req.customer.id]),query('SELECT id,points,reason,order_id,created_at FROM loyalty_transactions WHERE customer_user_id=$1 ORDER BY id DESC LIMIT 50',[req.customer.id])]);res.json({user:req.customer,addresses:a.rows,favorites:f.rows.map(x=>Number(x.item_id)),points:Number(l.rows[0]?.points||0),loyaltyTransactions:t.rows.map(x=>({...x,id:Number(x.id),points:Number(x.points),order_id:x.order_id==null?null:Number(x.order_id)}))})}catch(e){next(e)}});
 app.post('/api/customer/logout',customerAuth,requireCustomerCsrf,(req,res)=>{clearCookie(res,'customer_session');clearCookie(res,'customer_csrf');res.json({ok:true})});
 app.post('/api/customer/addresses',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const label=String(req.body?.label||'').trim(),address=String(req.body?.address||'').trim();if(!label||!address||address.length>300)return res.status(400).json({error:'بيانات العنوان غير صالحة'});const r=await query('INSERT INTO customer_addresses(customer_user_id,label,address,is_default) VALUES($1,$2,$3,$4) RETURNING id,label,address,is_default',[req.customer.id,label,address,!!req.body?.is_default]);if(req.body?.is_default)await query('UPDATE customer_addresses SET is_default=false WHERE customer_user_id=$1 AND id<>$2',[req.customer.id,r.rows[0].id]);res.status(201).json(r.rows[0])}catch(e){next(e)}});
 app.delete('/api/customer/addresses/:id',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{await query('DELETE FROM customer_addresses WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.customer.id]);res.json({ok:true})}catch(e){next(e)}});
@@ -573,6 +589,25 @@ app.get('/api/store', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+async function awardLoyaltyForDeliveredOrder(orderId, customerUserId, orderTotal) {
+  if (!customerUserId) return null;
+  const settings = await getSettings();
+  if (settings.loyaltyEnabled === 'false') return null;
+  const earnAmount = Math.max(1, Number(settings.loyaltyEarnAmount || 10000));
+  const points = Math.floor(Math.max(0, Number(orderTotal || 0)) / earnAmount);
+  if (points <= 0) return null;
+  const inserted = await query(
+    `INSERT INTO loyalty_transactions(customer_user_id,points,reason,order_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id`,
+    [customerUserId, points, `مكافأة إتمام الطلب #${orderId}`, orderId]
+  );
+  if (!inserted.rows[0]) {
+    const current = await query('SELECT points FROM loyalty_accounts WHERE customer_user_id=$1',[customerUserId]);
+    return { awarded: 0, balance: Number(current.rows[0]?.points || 0) };
+  }
+  const updated = await query(`INSERT INTO loyalty_accounts(customer_user_id,points) VALUES($1,$2) ON CONFLICT(customer_user_id) DO UPDATE SET points=loyalty_accounts.points+EXCLUDED.points,updated_at=NOW() RETURNING points`,[customerUserId,points]);
+  return { awarded: points, balance: Number(updated.rows[0]?.points || 0) };
+}
+
 app.post('/api/orders', orderLimiter, async (req, res, next) => {
   try {
     const customerName = String(req.body?.customerName || '').trim();
@@ -580,87 +615,96 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
     const address = String(req.body?.address || '').trim();
     const notes = String(req.body?.notes || '').trim();
     const items = req.body?.items;
-    if (!customerName || !customerPhone || !Array.isArray(items) || !items.length || items.length > 50) {
-      return res.status(400).json({ error: 'يرجى إدخال الاسم والهاتف واختيار صنف واحد على الأقل' });
-    }
-    if (customerName.length > 100 || customerPhone.length > 30 || address.length > 300 || notes.length > 500) {
-      return res.status(400).json({ error: 'بعض بيانات الطلب طويلة جداً' });
-    }
+    if (!customerName || !customerPhone || !Array.isArray(items) || !items.length || items.length > 50) return res.status(400).json({ error: 'يرجى إدخال الاسم والهاتف واختيار صنف واحد على الأقل' });
+    if (customerName.length > 100 || customerPhone.length > 30 || address.length > 300 || notes.length > 500) return res.status(400).json({ error: 'بعض بيانات الطلب طويلة جداً' });
 
     const itemIds = items.map(x => { const n = Number(x?.itemId); return Number.isInteger(n) && n > 0 ? n : Number(x?.productId); }).filter(n => Number.isInteger(n) && n > 0);
-    const offerIds = items
-      .map(x => Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN)))
-      .filter(n => Number.isInteger(n) && n > 0);
-
-    const itemRows = itemIds.length
-      ? (await query(`SELECT * FROM items WHERE id IN (${itemIds.map((_, i) => `$${i + 1}`).join(',')}) AND available=true`, itemIds)).rows
-      : [];
-    const offerRows = offerIds.length
-      ? (await query(`SELECT * FROM offers WHERE id IN (${offerIds.map((_, i) => `$${i + 1}`).join(',')}) AND active=true`, offerIds)).rows
-      : [];
-
+    const offerIds = items.map(x => Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN))).filter(n => Number.isInteger(n) && n > 0);
+    const itemRows = itemIds.length ? (await query(`SELECT * FROM items WHERE id IN (${itemIds.map((_, i) => `$${i + 1}`).join(',')}) AND available=true`, itemIds)).rows : [];
+    const offerRows = offerIds.length ? (await query(`SELECT * FROM offers WHERE id IN (${offerIds.map((_, i) => `$${i + 1}`).join(',')}) AND active=true`, offerIds)).rows : [];
     const itemMap = new Map(itemRows.map(r => [Number(r.id), r]));
     const offerMap = new Map(offerRows.map(r => [Number(r.id), r]));
     const normalized = [];
     let total = 0;
 
     for (const x of items) {
-      const rawQty = Number(x?.quantity);
-      if (!Number.isInteger(rawQty) || rawQty < 1 || rawQty > 99) {
-        return res.status(400).json({ error: 'كمية غير صالحة في الطلب' });
-      }
-      const qty = rawQty;
+      const qty = Number(x?.quantity);
+      if (!Number.isInteger(qty) || qty < 1 || qty > 99) return res.status(400).json({ error: 'كمية غير صالحة في الطلب' });
       const numericItemId = (() => { const n = Number(x?.itemId); if (Number.isInteger(n) && n > 0) return n; const p = Number(x?.productId); return Number.isInteger(p) && p > 0 ? p : NaN; })();
       const offerId = Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN));
-
       if (Number.isInteger(offerId) && offerId > 0 && offerMap.has(offerId)) {
-        const o = offerMap.get(offerId);
-        const price = Number(o.price);
-        normalized.push({ itemId: `offer-${offerId}`, offerId, name: o.title, price, quantity: qty, type: 'offer' });
-        total += price * qty;
-        continue;
+        const o = offerMap.get(offerId); const price = Number(o.price);
+        normalized.push({ itemId:`offer-${offerId}`, offerId, name:o.title, price, quantity:qty, type:'offer' }); total += price * qty; continue;
       }
-
       if (Number.isInteger(numericItemId) && numericItemId > 0 && itemMap.has(numericItemId)) {
-        const r = itemMap.get(numericItemId); let options=[]; try{options=Array.isArray(JSON.parse(r.options_json||'[]'))?JSON.parse(r.options_json||'[]'):[]}catch{}
+        const r = itemMap.get(numericItemId); let options=[]; try{const parsed=JSON.parse(r.options_json||'[]');options=Array.isArray(parsed)?parsed:[]}catch{}
         const selected=Array.isArray(x.options)?x.options.map(String):[]; const allowed=new Map(options.map(o=>[String(o.name),Number(o.price||0)]));
         if(selected.some(name=>!allowed.has(name))) return res.status(400).json({error:`خيارات التخصيص للصنف «${r.name}» غير صالحة`});
         const extra=selected.reduce((sum,name)=>sum+Math.max(0,allowed.get(name)),0); const price=Number(r.price)+extra;
         normalized.push({ itemId:Number(r.id), name:r.name, price, quantity:qty, type:'item', options:selected }); total += price * qty;
       }
     }
+    if (!normalized.length || normalized.length !== items.length) return res.status(400).json({ error: 'بعض الأصناف أو العروض المختارة غير متاحة حالياً' });
+    if (!Number.isFinite(total) || total < 0 || total > 1e12) return res.status(400).json({ error: 'قيمة الطلب غير صالحة' });
 
-    if (!normalized.length || normalized.length !== items.length) {
-      return res.status(400).json({ error: 'بعض الأصناف أو العروض المختارة غير متاحة حالياً' });
+    let customerUserId=null;
+    try { const cp=jwt.verify(parseCookies(req).customer_session||'',JWT_SECRET); const cq=await query('SELECT id FROM customer_users WHERE id=$1 AND active=true',[cp.id]); customerUserId=cq.rows[0]?Number(cq.rows[0].id):null; } catch {}
+
+    const couponCode=String(req.body?.couponCode||'').trim().toUpperCase();
+    let discount=0;
+    if(couponCode){
+      const cq=await query('SELECT * FROM coupons WHERE code=$1 AND active=true',[couponCode]),c=cq.rows[0],now=new Date();
+      if(!c||c.starts_at&&new Date(c.starts_at)>now||c.ends_at&&new Date(c.ends_at)<now||c.max_uses!=null&&c.used_count>=c.max_uses)return res.status(400).json({error:'رمز الخصم غير صالح أو منتهي'});
+      if(Number(c.min_order)>total)return res.status(400).json({error:'الحد الأدنى للطلب غير متحقق'});
+      discount=c.type==='percent'?Math.min(total,total*Number(c.value)/100):Math.min(total,Number(c.value));
     }
-    if (!Number.isFinite(total) || total < 0 || total > 1e12) {
-      return res.status(400).json({ error: 'قيمة الطلب غير صالحة' });
+
+    const deliveryFee=Number(req.body?.deliveryFee||0);
+    if(!Number.isFinite(deliveryFee)||deliveryFee<0)return res.status(400).json({error:'رسم التوصيل غير صالح'});
+    const afterCoupon=Math.max(0,total-discount);
+    const settings=await getSettings();
+    const loyaltyEnabled=settings.loyaltyEnabled!=='false';
+    const pointValue=Math.max(1,Number(settings.loyaltyPointValue||1000));
+    const minRedeem=Math.max(0,Math.floor(Number(settings.loyaltyMinRedeem||10)));
+    const maxRedeemPercent=Math.min(100,Math.max(0,Number(settings.loyaltyMaxRedeemPercent||50)));
+    let redeemPoints=Math.floor(Number(req.body?.loyaltyPoints||0));
+    if(!Number.isFinite(redeemPoints)||redeemPoints<0)return res.status(400).json({error:'نقاط الولاء المستخدمة غير صالحة'});
+    if(redeemPoints>0 && (!customerUserId || !loyaltyEnabled))return res.status(400).json({error:'لا يمكن استخدام نقاط الولاء لهذا الطلب'});
+    if(redeemPoints>0 && redeemPoints<minRedeem)return res.status(400).json({error:`الحد الأدنى لاستخدام النقاط هو ${minRedeem} نقطة`});
+    let loyaltyBalance=0;
+    if(customerUserId && loyaltyEnabled){
+      const l=await query('SELECT points FROM loyalty_accounts WHERE customer_user_id=$1',[customerUserId]);
+      loyaltyBalance=Number(l.rows[0]?.points||0);
+      const maxDiscount=Math.min(afterCoupon,afterCoupon*maxRedeemPercent/100);
+      const maxByValue=Math.floor(maxDiscount/pointValue);
+      if(redeemPoints>loyaltyBalance)return res.status(400).json({error:'رصيد نقاط الولاء غير كافٍ'});
+      if(redeemPoints>maxByValue)return res.status(400).json({error:'عدد نقاط الولاء المستخدم يتجاوز الحد المسموح لهذا الطلب'});
     }
+    const loyaltyDiscount=redeemPoints*pointValue;
+    const finalTotal=Math.max(0,afterCoupon-loyaltyDiscount)+deliveryFee;
+    const estimated=new Date(Date.now()+45*60000);
 
-    let customerUserId=null;try{const cp=jwt.verify(parseCookies(req).customer_session||'',JWT_SECRET);const cq=await query('SELECT id FROM customer_users WHERE id=$1 AND active=true',[cp.id]);customerUserId=cq.rows[0]?Number(cq.rows[0].id):null}catch{}
-    const couponCode=String(req.body?.couponCode||'').trim().toUpperCase();let discount=0;if(couponCode){const cq=await query('SELECT * FROM coupons WHERE code=$1 AND active=true',[couponCode]),c=cq.rows[0];if(!c)return res.status(400).json({error:'رمز الخصم غير صالح'});if(Number(c.min_order)>total)return res.status(400).json({error:'الحد الأدنى للطلب غير متحقق'});discount=c.type==='percent'?Math.min(total,total*Number(c.value)/100):Math.min(total,Number(c.value))}
-    const deliveryFee=Number(req.body?.deliveryFee||0);if(!Number.isFinite(deliveryFee)||deliveryFee<0)return res.status(400).json({error:'رسم التوصيل غير صالح'});const finalTotal=Math.max(0,total-discount)+deliveryFee;const estimated=new Date(Date.now()+45*60000);
-    const result = await query('INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,coupon_code,estimated_ready_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',[customerName,customerPhone,address,notes,JSON.stringify(normalized),finalTotal,customerUserId,deliveryFee,couponCode||null,estimated]);
-    const id = Number(result.rows[0].id);
+    const client=await pool.connect();
+    let id;
+    try{
+      await client.query('BEGIN');
+      if(redeemPoints>0){
+        const deducted=await client.query('UPDATE loyalty_accounts SET points=points-$1,updated_at=NOW() WHERE customer_user_id=$2 AND points >= $1 RETURNING points',[redeemPoints,customerUserId]);
+        if(!deducted.rows[0]) throw Object.assign(new Error('رصيد نقاط الولاء غير كافٍ'),{statusCode:400,publicMessage:'رصيد نقاط الولاء غير كافٍ'});
+        loyaltyBalance=Number(deducted.rows[0].points);
+      }
+      const result=await client.query('INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,coupon_code,estimated_ready_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',[customerName,customerPhone,address,notes,JSON.stringify(normalized),finalTotal,customerUserId,deliveryFee,couponCode||null,estimated]);
+      id=Number(result.rows[0].id);
+      await client.query('INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',[id,null,'new',null,'الزبون']);
+      if(redeemPoints>0) await client.query('INSERT INTO loyalty_transactions(customer_user_id,points,reason,order_id) VALUES($1,$2,$3,$4)',[customerUserId,-redeemPoints,`استخدام نقاط في الطلب #${id}`,id]);
+      await client.query('COMMIT');
+    }catch(e){await client.query('ROLLBACK');if(e.statusCode===400)return res.status(400).json({error:e.publicMessage||e.message});throw e}finally{client.release()}
 
-    await query(
-      'INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',
-      [id, null, 'new', null, 'الزبون']
-    );
-
-    let whatsappSent = false;
-    try {
-      whatsappSent = await sendWhatsAppOrder({ id, customerName, customerPhone, address, notes, items: normalized, total });
-      if (whatsappSent) await query('UPDATE orders SET whatsapp_sent=true WHERE id=$1', [id]);
-    } catch (e) { console.error('WhatsApp error:', e.message); }
-
-    const s = await getSettings();
-    const waLink = s.phone
-      ? `https://wa.me/${String(s.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`مرحباً ${customerName}، تم استلام طلبك رقم #${id} بقيمة ${total} ${s.currency}.`)}`
-      : '';
-
-    res.status(201).json({ id, total:finalTotal, subtotal:total, discount, deliveryFee, whatsappSent, waLink, estimatedReadyAt:estimated });
-  } catch (e) { next(e); }
+    let whatsappSent=false;
+    try { whatsappSent=await sendWhatsAppOrder({id,customerName,customerPhone,address,notes,items:normalized,total:finalTotal}); if(whatsappSent) await query('UPDATE orders SET whatsapp_sent=true WHERE id=$1',[id]); } catch(e){console.error('WhatsApp error:',e.message)}
+    const waLink=settings.phone?`https://wa.me/${String(settings.phone).replace(/\D/g,'')}?text=${encodeURIComponent(`مرحباً ${customerName}، تم استلام طلبك رقم #${id} بقيمة ${finalTotal} ${settings.currency}.`)}`:'';
+    res.status(201).json({id,total:finalTotal,subtotal:total,discount,loyaltyDiscount,loyaltyPointsUsed:redeemPoints,loyaltyBalance,deliveryFee,whatsappSent,waLink,estimatedReadyAt:estimated});
+  } catch(e) { next(e); }
 });
 
 app.get('/api/orders/:id', async (req, res, next) => {
@@ -778,7 +822,8 @@ app.put('/api/admin/settings', auth, requireCsrf, requirePerm('MANAGE_SETTINGS')
 
     const limits = {
       siteName: 100, tagline: 200, logoUrl: 2000, phone: 40, currency: 20,
-      primary: 20, secondary: 20, background: 20, theme: 30, whatsappEnabled: 10, whatsappRecipient: 40
+      primary: 20, secondary: 20, background: 20, theme: 30, whatsappEnabled: 10, whatsappRecipient: 40,
+      loyaltyEnabled: 10, loyaltyEarnAmount: 20, loyaltyPointValue: 20, loyaltyMinRedeem: 20, loyaltyMaxRedeemPercent: 20
     };
     for (const [k, v] of Object.entries(body)) {
       const value = String(v ?? '').trim();
@@ -788,6 +833,14 @@ app.put('/api/admin/settings', auth, requireCsrf, requirePerm('MANAGE_SETTINGS')
       }
       if (k === 'theme' && !ALLOWED_THEMES.has(value)) {
         return res.status(400).json({ error: 'الثيم غير صالح' });
+      }
+      if (['loyaltyEarnAmount','loyaltyPointValue','loyaltyMinRedeem','loyaltyMaxRedeemPercent'].includes(k)) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 0 || (k === 'loyaltyMaxRedeemPercent' && n > 100)) return res.status(400).json({ error: `قيمة الولاء غير صالحة للإعداد «${k}»` });
+        if (k !== 'loyaltyMaxRedeemPercent' && !Number.isInteger(n)) return res.status(400).json({ error: `قيمة الولاء يجب أن تكون رقماً صحيحاً للإعداد «${k}»` });
+      }
+      if (k === 'loyaltyEnabled' && !['true','false'].includes(value)) {
+        return res.status(400).json({ error: 'قيمة نظام الولاء غير صالحة' });
       }
       if (k === 'whatsappEnabled' && !['true','false'].includes(value)) {
         return res.status(400).json({ error: 'قيمة WhatsApp غير صالحة' });
@@ -808,12 +861,16 @@ app.put('/api/admin/orders/:id', auth, requireCsrf, requirePerm('RECEIVE_ORDERS'
     const allowed = ['new','confirmed','preparing','ready','delivered','cancelled'];
     const nextStatus = req.body.status;
     if (!allowed.includes(nextStatus)) return res.status(400).json({ error: 'حالة غير صالحة' });
-    const found = await query('SELECT id,status,customer_user_id FROM orders WHERE id=$1', [req.params.id]);
+    const found = await query('SELECT id,status,customer_user_id,total,delivery_fee FROM orders WHERE id=$1', [req.params.id]);
     const order = found.rows[0];
     if (!order) return res.status(404).json({ error: 'الطلب غير موجود' });
     const previousStatus = order.status || 'new';
     if (previousStatus === nextStatus) return res.json({ ok: true, unchanged: true });
     await query('UPDATE orders SET status=$1 WHERE id=$2', [nextStatus, req.params.id]);
+    let loyaltyAward = null;
+    if (nextStatus === 'delivered' && previousStatus !== 'delivered' && order.customer_user_id) {
+      try { loyaltyAward = await awardLoyaltyForDeliveredOrder(Number(req.params.id), Number(order.customer_user_id), Math.max(0, Number(order.total)-Number(order.delivery_fee||0))); } catch (e) { console.error('Loyalty award error:', e.message); }
+    }
     await query(
       'INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',
       [req.params.id, previousStatus, nextStatus, req.user.id, req.user.name || req.user.email || 'الإدارة']
@@ -823,7 +880,7 @@ app.put('/api/admin/orders/:id', auth, requireCsrf, requirePerm('RECEIVE_ORDERS'
     let whatsappStatusSent = false;
     try { whatsappStatusSent = await sendWhatsAppStatusUpdate(Number(req.params.id), nextStatus); }
     catch (e) { console.error('WhatsApp status error:', e.message); }
-    res.json({ ok: true, previousStatus, status: nextStatus, whatsappStatusSent });
+    res.json({ ok: true, previousStatus, status: nextStatus, whatsappStatusSent, loyaltyAward });
   } catch (e) { next(e); }
 });
 

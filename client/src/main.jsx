@@ -44,7 +44,7 @@ const moneyInWords=(n,c='ل.ل')=>`${arabicNumberWords(n)} ${c}`;
 function getCookie(name){const prefix=`${name}=`;return document.cookie.split('; ').find(x=>x.startsWith(prefix))?.slice(prefix.length)||'';}
 async function api(path,opts={}){const headers={'Content-Type':'application/json',...(opts.headers||{})};const method=String(opts.method||'GET').toUpperCase();const csrf=getCookie(path.startsWith('/customer/')?'customer_csrf':'csrf');if(csrf&&method!=='GET'&&method!=='HEAD')headers['X-CSRF-Token']=decodeURIComponent(csrf);const r=await fetch(API+path,{...opts,headers,credentials:'include'});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'حدث خطأ');return d;}
 const themes={classic:{label:'كلاسيكي',primary:'#9a3412',secondary:'#f59e0b',background:'#fffaf3'},ramadan:{label:'رمضان',primary:'#14532d',secondary:'#d4af37',background:'#fbf7ea'},eid:{label:'عيد',primary:'#7c3aed',secondary:'#f59e0b',background:'#fff7ed'},summer:{label:'صيفي',primary:'#0369a1',secondary:'#facc15',background:'#f0f9ff'},national:{label:'احتفالي',primary:'#b91c1c',secondary:'#15803d',background:'#fffaf5'}};
-function applyTheme(s){const t=themes[s.theme]||themes.classic;document.documentElement.style.setProperty('--primary',s.primary||t.primary);document.documentElement.style.setProperty('--secondary',s.secondary||t.secondary);document.documentElement.style.setProperty('--bg',s.background||t.background);}
+function applyTheme(s){const t=themes[s.theme]||themes.classic;const primary=s.primary||t.primary,secondary=s.secondary||t.secondary,bg=s.background||t.background;document.documentElement.style.setProperty('--primary',primary);document.documentElement.style.setProperty('--secondary',secondary);document.documentElement.style.setProperty('--bg',bg);document.documentElement.style.setProperty('--primary-soft',`color-mix(in srgb, ${primary} 10%, white)`);document.documentElement.style.setProperty('--primary-softer',`color-mix(in srgb, ${primary} 5%, white)`);document.documentElement.style.setProperty('--secondary-soft',`color-mix(in srgb, ${secondary} 11%, white)`);document.documentElement.style.setProperty('--theme-line',`color-mix(in srgb, ${primary} 18%, #ddd)`);document.documentElement.style.setProperty('--theme-surface',`color-mix(in srgb, ${bg} 78%, white)`);}
 function setSiteMeta(settings, section='home') {
   const siteName = settings?.siteName || 'فرنية صاج';
   const titles = { home: siteName, menu: `قائمة الطعام | ${siteName}`, categories: `الأقسام | ${siteName}`, offers: `العروض | ${siteName}`, tracking: `تتبع الطلب | ${siteName}`, contact: `تواصل معنا | ${siteName}` };
@@ -91,350 +91,56 @@ const addOffer=o=>run('جاري إضافة العرض…',async()=>{const key=`o
 </tr>)}</tbody>
 </table></div>)}{items.length===0&&<div className="empty-state">لا توجد أصناف متاحة في هذا التصنيف حالياً.</div>}</section>
 <section id="orders" className="info-strip"><div><Clock/><b>طازج يومياً</b><span>تحضير حسب الطلب</span></div><div><MapPin/><b>استلام / توصيل</b><span>حسب منطقتك</span></div><div><Phone/><b>تواصل معنا</b><span>{data.settings.phone||'أضف رقم الهاتف من الإدارة'}</span></div></section>
-</main><Footer settings={data.settings}/>{addedNotice&&<div className="cart-toast" role="status" aria-live="polite"><CheckCircle2 size={20}/><div><b>تمت الإضافة إلى السلة</b><span>{addedNotice}</span></div><button onClick={()=>setCheckout(true)}>عرض السلة ({cartCount})</button></div>}{trackingOpen&&<div className="modal-bg tracking-overlay"><div className="modal tracking-search-modal"><button className="close" onClick={()=>{setTrackingOpen(false);setTracking(null)}}><X/></button><span className="eyebrow">متابعة</span><h2>تتبع طلبك</h2><TrackOrder onResult={setTracking}/>{tracking&&<TrackingResultInline result={tracking}/>}</div></div>}{accountOpen&&<CustomerPanel customer={customer} setCustomer={setCustomer} onClose={()=>setAccountOpen(false)} onReorder={o=>{setCart(o.items||[]);setAccountOpen(false);setCheckout(true)}}/>}{checkout&&<CartModal cart={cart} setCart={setCart} total={total} currency={data.settings.currency} customer={customer} onClose={()=>setCheckout(false)} onSent={x=>{setSent(x);setCheckout(false);setCart([])}}/>}{sent&&<SuccessModal result={sent} phone={data.settings.phone} onClose={()=>setSent(null)}/>}</div>}
+</main><Footer settings={data.settings}/>{addedNotice&&<div className="cart-toast" role="status" aria-live="polite"><CheckCircle2 size={20}/><div><b>تمت الإضافة إلى السلة</b><span>{addedNotice}</span></div><button onClick={()=>setCheckout(true)}>عرض السلة ({cartCount})</button></div>}{trackingOpen&&<div className="modal-bg tracking-overlay"><div className="modal tracking-search-modal"><button className="close" onClick={()=>{setTrackingOpen(false);setTracking(null)}}><X/></button><span className="eyebrow">متابعة</span><h2>تتبع طلبك</h2><TrackOrder onResult={setTracking}/>{tracking&&<TrackingResultInline result={tracking}/>}</div></div>}{accountOpen&&<CustomerPanel customer={customer} setCustomer={setCustomer} onClose={()=>setAccountOpen(false)} onReorder={o=>{setCart(o.items||[]);setAccountOpen(false);setCheckout(true)}}/>}{checkout&&<CartModal cart={cart} setCart={setCart} total={total} settings={data.settings} customer={customer} onClose={()=>setCheckout(false)} onSent={x=>{setSent(x);setCheckout(false);setCart([]);if(x?.loyaltyBalance!=null)setCustomer(c=>c?({...c,points:Number(x.loyaltyBalance)}):c)}}/>}{sent&&<SuccessModal result={sent} phone={data.settings.phone} onClose={()=>setSent(null)}/>}</div>}
 function TrackOrder({onResult}){const {run}=useProgress();const [id,setId]=useState('');const [phone,setPhone]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const submit=async e=>{e.preventDefault();setError('');setBusy(true);try{const r=await run('جاري البحث عن الطلب…',()=>api(`/orders/${encodeURIComponent(id.trim())}?phone=${encodeURIComponent(phone.trim())}`));onResult(r)}catch(err){setError(err.message||'تعذر العثور على الطلب.')}finally{setBusy(false)}};return <div className="tracking-box"><form onSubmit={submit}><input inputMode="numeric" required placeholder="رقم الطلب" value={id} onChange={e=>setId(e.target.value)}/><input required placeholder="رقم الهاتف المستخدم في الطلب" value={phone} onChange={e=>setPhone(e.target.value)}/>{error&&<div className="error">{error}</div>}<button className="btn primary" disabled={busy}>{busy?'جاري البحث…':'عرض حالة الطلب'}</button></form>{onResult&&null}</div>}
 function CustomerPanel({customer,setCustomer,onClose,onReorder}){
   const {run}=useProgress();
   const [mode,setMode]=useState(customer?'account':'login');
-  const [f,setF]=useState({
-    name:'',phone:'',email:'',password:'',identifier:'',
-    label:'المنزل',address:'',is_default:false
-  });
-  const [orders,setOrders]=useState([]);
-  const [err,setErr]=useState('');
-
-  useEffect(()=>{
-    setMode(customer?'account':'login');
-    if(customer){
-      setF(prev=>({
-        ...prev,
-        name:customer.user?.name||'',
-        phone:customer.user?.phone||'',
-        address:'',
-        label:'المنزل',
-        is_default:false
-      }));
-    }
-  },[customer]);
-
-  useEffect(()=>{
-    if(customer){
-      api('/customer/orders')
-        .then(r=>setOrders(Array.isArray(r.orders)?r.orders:[]))
-        .catch(()=>setOrders([]));
-    }else{
-      setOrders([]);
-    }
-  },[customer]);
-
-  const submit=async()=>{
-    setErr('');
-    try{
-      if(mode==='login'){
-        await run('جاري تسجيل الدخول…',()=>api('/customer/login',{
-          method:'POST',
-          body:JSON.stringify({
-            identifier:f.identifier,
-            password:f.password
-          })
-        }));
-      }else if(mode==='register'){
-        await run('جاري إنشاء الحساب…',()=>api('/customer/register',{
-          method:'POST',
-          body:JSON.stringify({
-            name:f.name,
-            phone:f.phone,
-            email:f.email,
-            password:f.password
-          })
-        }));
-      }else if(mode==='address'){
-        const label=String(f.label||'').trim();
-        const address=String(f.address||'').trim();
-        if(!label||!address){
-          setErr('يرجى إدخال اسم العنوان والعنوان بالتفصيل.');
-          return;
-        }
-        await run('جاري حفظ العنوان…',()=>api('/customer/addresses',{
-          method:'POST',
-          body:JSON.stringify({
-            label,
-            address,
-            is_default:Boolean(f.is_default)
-          })
-        }));
-      }
-
-      const m=await api('/customer/me');
-      setCustomer(m);
-      setMode('account');
-      setF(prev=>({
-        ...prev,
-        address:'',
-        label:'المنزل',
-        is_default:false
-      }));
-    }catch(e){
-      setErr(e.message||'تعذر تنفيذ العملية.');
-    }
-  };
-
-  const openAddressForm=()=>{
-    setErr('');
-    setF(prev=>({
-      ...prev,
-      label:'المنزل',
-      address:'',
-      is_default:false
-    }));
-    setMode('address');
-  };
-
-  const cancelAddress=()=>{
-    setErr('');
-    setMode('account');
-    setF(prev=>({
-      ...prev,
-      address:'',
-      label:'المنزل',
-      is_default:false
-    }));
-  };
-
-  const logout=async()=>{
-    try{
-      await api('/customer/logout',{method:'POST'});
-    }catch{}
-    setCustomer(null);
-    setMode('login');
-  };
-
+  const [f,setF]=useState({name:'',phone:'',email:'',password:'',identifier:'',label:'المنزل',address:'',is_default:false});
+  const [orders,setOrders]=useState([]); const [err,setErr]=useState('');
+  useEffect(()=>{setMode(customer?'account':'login');if(customer)setF(v=>({...v,name:customer.user?.name||'',phone:customer.user?.phone||'',address:'',label:'المنزل',is_default:false}));},[customer]);
+  useEffect(()=>{if(customer)api('/customer/orders').then(r=>setOrders(Array.isArray(r.orders)?r.orders:[])).catch(()=>setOrders([]));else setOrders([])},[customer]);
+  const submit=async()=>{setErr('');try{
+    if(mode==='login') await run('جاري تسجيل الدخول…',()=>api('/customer/login',{method:'POST',body:JSON.stringify({identifier:f.identifier,password:f.password})}));
+    else if(mode==='register') await run('جاري إنشاء الحساب…',()=>api('/customer/register',{method:'POST',body:JSON.stringify({name:f.name,phone:f.phone,email:f.email,password:f.password})}));
+    else if(mode==='address'){const label=String(f.label||'').trim(),address=String(f.address||'').trim();if(!label||!address){setErr('يرجى إدخال اسم العنوان والعنوان بالتفصيل.');return}await run('جاري حفظ العنوان…',()=>api('/customer/addresses',{method:'POST',body:JSON.stringify({label,address,is_default:Boolean(f.is_default)})}));}
+    const m=await api('/customer/me');setCustomer(m);setMode('account');setF(v=>({...v,address:'',label:'المنزل',is_default:false}));
+  }catch(e){setErr(e.message||'تعذر تنفيذ العملية.')}};
+  const logout=async()=>{try{await api('/customer/logout',{method:'POST'})}catch{}setCustomer(null);setMode('login')};
   const addresses=Array.isArray(customer?.addresses)?customer.addresses:[];
-
-  return (
-    <div className="modal-bg">
-      <div className="modal customer-modal">
-        <button type="button" className="close" onClick={onClose}>
-          <X/>
-        </button>
-
-        {!customer && mode==='login' && (
-          <>
-            <span className="eyebrow">حساب العميل</span>
-            <h2>تسجيل الدخول</h2>
-            <input
-              placeholder="الهاتف أو البريد الإلكتروني"
-              value={f.identifier}
-              onChange={e=>setF({...f,identifier:e.target.value})}
-            />
-            <input
-              type="password"
-              placeholder="كلمة المرور"
-              value={f.password}
-              onChange={e=>setF({...f,password:e.target.value})}
-            />
-            {err&&<div className="error">{err}</div>}
-            <button type="button" className="btn primary full" onClick={submit}>
-              دخول
-            </button>
-            <button
-              type="button"
-              className="btn ghost full"
-              onClick={()=>{
-                setErr('');
-                setMode('register');
-              }}
-            >
-              إنشاء حساب جديد
-            </button>
-          </>
-        )}
-
-        {!customer && mode==='register' && (
-          <>
-            <span className="eyebrow">حساب العميل</span>
-            <h2>إنشاء حساب</h2>
-            <input
-              placeholder="الاسم"
-              value={f.name}
-              onChange={e=>setF({...f,name:e.target.value})}
-            />
-            <input
-              placeholder="رقم الهاتف"
-              value={f.phone}
-              onChange={e=>setF({...f,phone:e.target.value})}
-            />
-            <input
-              type="email"
-              placeholder="البريد الإلكتروني (اختياري)"
-              value={f.email}
-              onChange={e=>setF({...f,email:e.target.value})}
-            />
-            <input
-              type="password"
-              placeholder="كلمة المرور"
-              value={f.password}
-              onChange={e=>setF({...f,password:e.target.value})}
-            />
-            {err&&<div className="error">{err}</div>}
-            <button type="button" className="btn primary full" onClick={submit}>
-              إنشاء الحساب
-            </button>
-            <button
-              type="button"
-              className="btn ghost full"
-              onClick={()=>{
-                setErr('');
-                setMode('login');
-              }}
-            >
-              العودة لتسجيل الدخول
-            </button>
-          </>
-        )}
-
-        {customer && (
-          <>
-            {mode==='account' && (
-              <>
-                <div className="account-head">
-                  <div className="avatar">{customer.user?.name?.[0]||'ز'}</div>
-                  <div>
-                    <span className="eyebrow">مرحباً</span>
-                    <h2>{customer.user?.name||'الزبون'}</h2>
-                    <small>{customer.user?.phone||''}</small>
-                  </div>
-                </div>
-
-                <div className="account-stats">
-                  <div>
-                    <b>{customer.points||0}</b>
-                    <span>نقطة ولاء</span>
-                  </div>
-                  <div>
-                    <b>{orders.length}</b>
-                    <span>طلب سابق</span>
-                  </div>
-                </div>
-
-                <div className="account-actions">
-                  <button type="button" className="btn ghost" onClick={openAddressForm}>
-                    <MapPinned size={16}/> إضافة عنوان
-                  </button>
-                  <button type="button" className="btn ghost" onClick={logout}>
-                    <CustomerLogOut size={16}/> خروج
-                  </button>
-                </div>
-              </>
-            )}
-
-            {mode==='address' && (
-              <div className="saved-address-form">
-                <div className="address-form-title">
-                  <span className="eyebrow">عنوان جديد</span>
-                  <h3>إضافة عنوان</h3>
-                </div>
-
-                <div className="address-form-grid">
-                  <label>
-                    <span>اسم العنوان</span>
-                    <input
-                      placeholder="مثال: المنزل"
-                      value={f.label}
-                      onChange={e=>setF({...f,label:e.target.value})}
-                    />
-                  </label>
-
-                  <label>
-                    <span>العنوان بالتفصيل</span>
-                    <textarea
-                      placeholder="المنطقة، الشارع، البناء..."
-                      value={f.address}
-                      onChange={e=>setF({...f,address:e.target.value})}
-                    />
-                  </label>
-                </div>
-
-                <label className="default-address-toggle">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(f.is_default)}
-                    onChange={e=>setF({...f,is_default:e.target.checked})}
-                  />
-                  <span>اجعل هذا العنوان افتراضياً</span>
-                </label>
-
-                {err&&<div className="error">{err}</div>}
-
-                <div className="address-form-actions">
-                  <button type="button" className="btn ghost" onClick={cancelAddress}>
-                    إلغاء
-                  </button>
-                  <button
-                    type="button"
-                    className="btn primary"
-                    onClick={submit}
-                    disabled={!String(f.label||'').trim()||!String(f.address||'').trim()}
-                  >
-                    حفظ العنوان
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="saved-addresses">
-              <div className="subsection-head">
-                <h3>عناويني</h3>
-                <span>{addresses.length}</span>
-              </div>
-
-              {addresses.length ? (
-                addresses.map(a=>(
-                  <div className="saved-address-card" key={a.id}>
-                    <div className="saved-address-icon">
-                      <MapPin size={17}/>
-                    </div>
-                    <div>
-                      <b>{a.label}</b>
-                      <p>{a.address}</p>
-                    </div>
-                    {a.is_default&&<em>افتراضي</em>}
-                  </div>
-                ))
-              ) : (
-                <p className="muted">لم تتم إضافة أي عنوان بعد.</p>
-              )}
-            </div>
-
-            <h3>طلباتي</h3>
-            <div className="customer-orders">
-              {orders.length ? (
-                orders.map(o=>(
-                  <div className="customer-order" key={o.id}>
-                    <b>#{o.id}</b>
-                    <span>{o.status}</span>
-                    <strong>{money(o.total)}</strong>
-                    <button
-                      type="button"
-                      className="btn ghost"
-                      onClick={()=>onReorder(o)}
-                    >
-                      إعادة الطلب
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <p className="muted">لا توجد طلبات سابقة.</p>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const transactions=Array.isArray(customer?.loyaltyTransactions)?customer.loyaltyTransactions:[];
+  const statuses={new:'جديد',confirmed:'مؤكد',preparing:'قيد التحضير',ready:'جاهز',delivered:'تم التسليم',cancelled:'ملغى'};
+  if(!customer)return <div className="modal-bg"><div className="modal customer-modal customer-auth-modal"><button type="button" className="close" onClick={onClose}><X/></button>{mode==='login'?<><span className="eyebrow">حساب العميل</span><h2>تسجيل الدخول</h2><input placeholder="الهاتف أو البريد الإلكتروني" value={f.identifier} onChange={e=>setF({...f,identifier:e.target.value})}/><input type="password" placeholder="كلمة المرور" value={f.password} onChange={e=>setF({...f,password:e.target.value})}/>{err&&<div className="error">{err}</div>}<button className="btn primary full" onClick={submit}>دخول</button><button className="btn ghost full" onClick={()=>{setErr('');setMode('register')}}>إنشاء حساب جديد</button></>:<><span className="eyebrow">حساب العميل</span><h2>إنشاء حساب</h2><input placeholder="الاسم" value={f.name} onChange={e=>setF({...f,name:e.target.value})}/><input placeholder="رقم الهاتف" value={f.phone} onChange={e=>setF({...f,phone:e.target.value})}/><input type="email" placeholder="البريد الإلكتروني (اختياري)" value={f.email} onChange={e=>setF({...f,email:e.target.value})}/><input type="password" placeholder="كلمة المرور" value={f.password} onChange={e=>setF({...f,password:e.target.value})}/>{err&&<div className="error">{err}</div>}<button className="btn primary full" onClick={submit}>إنشاء الحساب</button><button className="btn ghost full" onClick={()=>{setErr('');setMode('login')}}>العودة لتسجيل الدخول</button></>}</div></div>;
+  return <div className="modal-bg"><div className="modal customer-modal customer-account-modal"><button type="button" className="close" onClick={onClose}><X/></button><div className="customer-layout" dir="rtl">
+    <section className="customer-right-column">
+      <div className="account-head"><div className="avatar">{customer.user?.name?.[0]||'ز'}</div><div><span className="eyebrow">مرحباً</span><h2>{customer.user?.name}</h2><small>{customer.user?.phone}</small></div></div>
+      <div className="customer-stat-grid"><div><b>{customer.points||0}</b><span>نقطة ولاء</span></div><div><b>{orders.length}</b><span>طلب سابق</span></div></div>
+      <div className="loyalty-card"><div className="loyalty-card-head"><div><span className="eyebrow">برنامج الولاء</span><h3>رصيدك الحالي</h3></div><Gift size={22}/></div><strong>{Number(customer.points||0).toLocaleString('ar-LB')} نقطة</strong><p>تكسب النقاط بعد تسليم الطلب، ويمكنك استخدامها كخصم في الطلبات القادمة.</p><div className="loyalty-history">{transactions.slice(0,5).map(t=><div key={t.id}><span>{t.reason}</span><b className={t.points>=0?'points-plus':'points-minus'}>{t.points>=0?'+':''}{t.points}</b></div>)}</div></div>
+      <div className="account-actions"><button className="btn ghost" onClick={()=>{setErr('');setF(v=>({...v,label:'المنزل',address:'',is_default:false}));setMode('address')}}><MapPinned size={16}/> إضافة عنوان</button><button className="btn ghost" onClick={logout}><CustomerLogOut size={16}/> خروج</button></div>
+      {mode==='address'&&<div className="saved-address-form"><div className="address-form-title"><span className="eyebrow">عنوان جديد</span><h3>إضافة عنوان</h3></div><div className="address-form-grid"><label><span>اسم العنوان</span><input placeholder="مثال: المنزل" value={f.label} onChange={e=>setF({...f,label:e.target.value})}/></label><label><span>العنوان بالتفصيل</span><textarea placeholder="المنطقة، الشارع، البناء..." value={f.address} onChange={e=>setF({...f,address:e.target.value})}/></label></div><label className="default-address-toggle"><input type="checkbox" checked={Boolean(f.is_default)} onChange={e=>setF({...f,is_default:e.target.checked})}/><span>اجعل هذا العنوان افتراضياً</span></label>{err&&<div className="error">{err}</div>}<div className="address-form-actions"><button type="button" className="btn ghost" onClick={()=>setMode('account')}>إلغاء</button><button type="button" className="btn primary" onClick={submit} disabled={!String(f.label||'').trim()||!String(f.address||'').trim()}>حفظ العنوان</button></div></div>}
+      <div className="saved-addresses"><div className="subsection-head"><h3>عناويني</h3><span>{addresses.length}</span></div>{addresses.length?addresses.map(a=><div className="saved-address-card" key={a.id}><div className="saved-address-icon"><MapPin size={17}/></div><div><b>{a.label}</b><p>{a.address}</p></div>{a.is_default&&<em>افتراضي</em>}</div>):<p className="muted">لم تتم إضافة أي عنوان بعد.</p>}</div>
+    </section>
+    <section className="customer-left-column"><div className="customer-orders-head"><div><span className="eyebrow">سجل الحساب</span><h3>طلباتي السابقة</h3></div><span>{orders.length}</span></div><div className="customer-orders customer-orders-large">{orders.length?orders.map(o=><div className="customer-order customer-order-large" key={o.id}><div className="customer-order-main"><b>#{o.id}</b><span>{statuses[o.status]||o.status}</span></div><strong>{money(o.total)}</strong><small>{o.created_at?new Date(o.created_at).toLocaleDateString('ar-LB'):''}</small><button className="btn ghost" onClick={()=>onReorder(o)}>إعادة الطلب</button></div>):<div className="empty-state">لا توجد طلبات سابقة.</div>}</div></section>
+  </div></div></div>;
 }
-
-function CartModal({cart,setCart,total,currency,customer,onClose,onSent}){const defaultAddress=customer?.addresses?.find(a=>a.is_default)?.address||'';const [form,setForm]=useState({customerName:customer?.user?.name||'',customerPhone:customer?.user?.phone||'',address:defaultAddress,notes:'',couponCode:'',deliveryFee:0}),[busy,setBusy]=useState(false),[err,setErr]=useState('');const [discount,setDiscount]=useState(0);const [couponMsg,setCouponMsg]=useState('');const [zones,setZones]=useState([]);useEffect(()=>{api('/public/delivery-zones').then(r=>setZones(r.zones||[])).catch(()=>{})},[]);useEffect(()=>{if(!customer?.user)return;setForm(f=>({...f,customerName:customer.user.name||'',customerPhone:customer.user.phone||'',address:customer.addresses?.find(a=>a.is_default)?.address||f.address||''}))},[customer]);const {run}=useProgress();const submit=async e=>{e.preventDefault();setBusy(true);setErr('');try{const r=await run('جاري إرسال الطلب…',()=>api('/orders',{method:'POST',body:JSON.stringify({...form,items:cart})}));onSent(r)}catch(e){setErr(e.message)}finally{setBusy(false)}};return <div className="modal-bg"><div className="modal cart-modal"><button className="close" onClick={onClose}><X/></button><h2>السلة وتأكيد الطلب</h2><form onSubmit={submit}><div className="cart-layout"><section className="cart-items-column"><div className="cart-column-head"><div><span className="eyebrow">طلبك</span><h3>الأصناف المطلوبة</h3></div><span className="cart-items-count">{cart.reduce((a,x)=>a+x.quantity,0)} صنف</span></div><div className="cart-lines">{cart.map(x=>{const key=x.cartKey||x.itemId;return <div className="cart-line cart-line-large" key={key}><div className="cart-line-info"><b>{x.name}</b>{x.options?.length?<small>الخيارات: {x.options.join('، ')}</small>:null}<small>{money(x.price,currency)} للصنف</small></div><div className="qty qty-large"><button type="button" aria-label="إنقاص الكمية" onClick={()=>setCart(c=>c.map(y=>(y.cartKey||y.itemId)===key?{...y,quantity:y.quantity-1}:y).filter(y=>y.quantity>0))}><Minus size={17}/></button><strong>{x.quantity}</strong><button type="button" aria-label="زيادة الكمية" onClick={()=>setCart(c=>c.map(y=>(y.cartKey||y.itemId)===key?{...y,quantity:y.quantity+1}:y))}><Plus size={17}/></button></div><strong className="cart-line-subtotal">{money(x.price*x.quantity,currency)}</strong></div>})}</div>{!cart.length&&<div className="empty-state">السلة فارغة.</div>}</section><section className="cart-details-column"><div className="checkout-section"><div className="checkout-section-head"><span className="eyebrow">الخصم</span><h3>كود الخصم</h3></div><div className="coupon-row"><input placeholder="أدخل كود الخصم" value={form.couponCode} onChange={e=>{setForm({...form,couponCode:e.target.value.toUpperCase()});setCouponMsg('')}}/><button type="button" className="btn ghost" onClick={async()=>{try{const r=await api('/public/coupon/validate',{method:'POST',body:JSON.stringify({code:form.couponCode,subtotal:total})});setDiscount(Number(r.discount||0));setCouponMsg('تم تطبيق الخصم')}catch(e){setDiscount(0);setCouponMsg(e.message)}}}>تطبيق</button></div>{couponMsg&&<small className={discount?'coupon-ok':'error'}>{couponMsg}</small>}</div><div className="checkout-section"><div className="checkout-section-head"><span className="eyebrow">الاستلام</span><h3>طريقة الاستلام</h3></div><select value={form.deliveryFee} onChange={e=>setForm({...form,deliveryFee:Number(e.target.value)})}><option value={0}>استلام من الفرنية</option>{zones.map(z=><option key={z.id} value={z.fee}>{z.name} — رسم التوصيل {money(z.fee,currency)}</option>)}</select></div><div className="checkout-section"><div className="checkout-section-head"><span className="eyebrow">بيانات الزبون</span><h3>معلومات الزبون</h3></div>{customer?<div className="checkout-customer-badge"><UserRound size={17}/><span>الطلب مرتبط بحساب <b>{customer.user.name}</b></span></div>:<div className="checkout-customer-badge"><UserRound size={17}/><span>أكمل بياناتك لإرسال الطلب</span></div>}<input required placeholder="الاسم" value={form.customerName} readOnly={!!customer} onChange={e=>setForm({...form,customerName:e.target.value})}/><input required placeholder="رقم الهاتف" value={form.customerPhone} readOnly={!!customer} onChange={e=>setForm({...form,customerPhone:e.target.value})}/>{customer?.addresses?.length?<select value={form.address} onChange={e=>setForm({...form,address:e.target.value})}><option value="">اختر عنواناً محفوظاً</option>{customer.addresses.map(a=><option key={a.id} value={a.address}>{a.label} — {a.address}</option>)}</select>:null}<input required placeholder="العنوان / المنطقة" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/><textarea placeholder="ملاحظات على الطلب" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></div></section></div><div className="cart-bottom"><div className="total cart-total"><span>الإجمالي</span><div className="total-values"><b>{money(Math.max(0,total-discount)+Number(form.deliveryFee||0),currency)}</b><small>{discount>0?`بعد خصم ${money(discount,currency)}`:moneyInWords(total,currency)}</small></div></div>{err&&<div className="error cart-submit-error">{err}</div>}<button type="submit" disabled={busy||!cart.length} className="btn primary cart-submit-btn">{busy?'جاري إرسال الطلب…':'إرسال الطلب'}</button></div></form></div></div>}
+function CartModal({cart,setCart,total,settings,customer,onClose,onSent}){
+  const currency=settings?.currency||'ل.ل'; const defaultAddress=customer?.addresses?.find(a=>a.is_default)?.address||'';
+  const [form,setForm]=useState({customerName:customer?.user?.name||'',customerPhone:customer?.user?.phone||'',address:defaultAddress,notes:'',couponCode:'',deliveryFee:0,loyaltyPoints:0});
+  const [busy,setBusy]=useState(false),[err,setErr]=useState(''),[discount,setDiscount]=useState(0),[couponMsg,setCouponMsg]=useState(''),[zones,setZones]=useState([]),[loyaltyInfo,setLoyaltyInfo]=useState(null);
+  useEffect(()=>{api('/public/delivery-zones').then(r=>setZones(r.zones||[])).catch(()=>{})},[]);
+  useEffect(()=>{setForm(f=>({...f,customerName:customer?.user?.name||'',customerPhone:customer?.user?.phone||'',address:customer?.addresses?.find(a=>a.is_default)?.address||f.address||'',loyaltyPoints:0}));setLoyaltyInfo(null)},[customer]);
+  const {run}=useProgress();
+  const afterCoupon=Math.max(0,total-discount); const pointValue=Math.max(1,Number(settings?.loyaltyPointValue||1000)); const minRedeem=Math.max(0,Number(settings?.loyaltyMinRedeem||10)); const maxPercent=Math.min(100,Math.max(0,Number(settings?.loyaltyMaxRedeemPercent||50))); const maxRedeem=Math.min(Number(customer?.points||0),Math.floor(Math.min(afterCoupon,afterCoupon*maxPercent/100)/pointValue)); const loyaltyDiscount=Math.min(maxRedeem,Math.max(0,Number(form.loyaltyPoints||0)))*pointValue; const finalPreview=Math.max(0,afterCoupon-loyaltyDiscount)+Number(form.deliveryFee||0);
+  const submit=async e=>{e.preventDefault();setBusy(true);setErr('');try{const r=await run('جاري إرسال الطلب…',()=>api('/orders',{method:'POST',body:JSON.stringify({...form,loyaltyPoints:Math.floor(Number(form.loyaltyPoints||0)),items:cart})}));onSent(r)}catch(e){setErr(e.message)}finally{setBusy(false)}};
+  const applyCoupon=async()=>{try{const r=await api('/public/coupon/validate',{method:'POST',body:JSON.stringify({code:form.couponCode,subtotal:total})});setDiscount(Number(r.discount||0));setCouponMsg('تم تطبيق الخصم')}catch(e){setDiscount(0);setCouponMsg(e.message)}};
+  return <div className="modal-bg"><div className="modal cart-modal"><button className="close" onClick={onClose}><X/></button><h2>السلة وتأكيد الطلب</h2><form onSubmit={submit}><div className="cart-layout">
+    <section className="cart-items-column"><div className="cart-column-head"><div><span className="eyebrow">طلبك</span><h3>الأصناف المطلوبة</h3></div><span className="cart-items-count">{cart.reduce((a,x)=>a+x.quantity,0)} صنف</span></div><div className="cart-lines">{cart.map(x=>{const key=x.cartKey||x.itemId;return <div className="cart-line cart-line-large" key={key}><div className="cart-line-info"><b>{x.name}</b>{x.options?.length?<small>الخيارات: {x.options.join('، ')}</small>:null}<small>{money(x.price,currency)} للصنف</small></div><div className="qty qty-large"><button type="button" aria-label="إنقاص الكمية" onClick={()=>setCart(c=>c.map(y=>(y.cartKey||y.itemId)===key?{...y,quantity:y.quantity-1}:y).filter(y=>y.quantity>0))}><Minus size={17}/></button><strong>{x.quantity}</strong><button type="button" aria-label="زيادة الكمية" onClick={()=>setCart(c=>c.map(y=>(y.cartKey||y.itemId)===key?{...y,quantity:y.quantity+1}:y))}><Plus size={17}/></button></div><strong className="cart-line-subtotal">{money(x.price*x.quantity,currency)}</strong></div>})}</div>{!cart.length&&<div className="empty-state">السلة فارغة.</div>}</section>
+    <section className="cart-details-column"><div className="checkout-section"><div className="checkout-section-head"><span className="eyebrow">الخصم</span><h3>كود الخصم</h3></div><div className="coupon-row"><input placeholder="أدخل كود الخصم" value={form.couponCode} onChange={e=>{setForm({...form,couponCode:e.target.value.toUpperCase()});setCouponMsg('')}}/><button type="button" className="btn ghost" onClick={applyCoupon}>تطبيق</button></div>{couponMsg&&<small className={discount?'coupon-ok':'error'}>{couponMsg}</small>}</div>
+      <div className="checkout-section"><div className="checkout-section-head"><span className="eyebrow">الاستلام</span><h3>طريقة الاستلام</h3></div><select value={form.deliveryFee} onChange={e=>setForm({...form,deliveryFee:Number(e.target.value)})}><option value={0}>استلام من الفرنية</option>{zones.map(z=><option key={z.id} value={z.fee}>{z.name} — رسم التوصيل {money(z.fee,currency)}</option>)}</select></div>
+      {customer&&settings?.loyaltyEnabled!==false&&<div className="checkout-section loyalty-checkout-section"><div className="checkout-section-head"><span className="eyebrow">الولاء</span><h3>استخدام نقاط الولاء</h3></div><div className="loyalty-balance-row"><span>رصيدك: <b>{Number(customer.points||0).toLocaleString('ar-LB')} نقطة</b></span><span>{pointValue.toLocaleString('ar-LB')} {currency} / نقطة</span></div>{maxRedeem>0?<><input className="loyalty-points-input" type="number" min="0" max={maxRedeem} step="1" placeholder={`أدخل النقاط (الحد ${maxRedeem})`} value={form.loyaltyPoints||''} onChange={e=>setForm({...form,loyaltyPoints:Math.min(maxRedeem,Math.max(0,Math.floor(Number(e.target.value||0))))})}/><small className="loyalty-help">الحد الأدنى للاستخدام: {minRedeem} نقطة. يمكنك استخدام حتى {maxPercent}% من قيمة المنتجات بعد الخصم.</small>{loyaltyDiscount>0&&<div className="loyalty-discount-note">خصم النقاط: {money(loyaltyDiscount,currency)}</div></>:<small className="loyalty-help">لا يمكن استخدام النقاط على هذا الطلب حالياً.</small>}</div>}
+      <div className="checkout-section"><div className="checkout-section-head"><span className="eyebrow">بيانات الزبون</span><h3>معلومات الزبون</h3></div>{customer?<div className="checkout-customer-badge"><UserRound size={17}/><span>الطلب مرتبط بحساب <b>{customer.user.name}</b></span></div>:<div className="checkout-customer-badge"><UserRound size={17}/><span>أكمل بياناتك لإرسال الطلب</span></div>}<input required placeholder="الاسم" value={form.customerName} readOnly={!!customer} onChange={e=>setForm({...form,customerName:e.target.value})}/><input required placeholder="رقم الهاتف" value={form.customerPhone} readOnly={!!customer} onChange={e=>setForm({...form,customerPhone:e.target.value})}/>{customer?.addresses?.length?<select value={form.address} onChange={e=>setForm({...form,address:e.target.value})}><option value="">اختر عنواناً محفوظاً</option>{customer.addresses.map(a=><option key={a.id} value={a.address}>{a.label} — {a.address}</option>)}</select>:null}<input required placeholder="العنوان / المنطقة" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/><textarea placeholder="ملاحظات على الطلب" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></div>
+    </section></div><div className="cart-bottom"><div className="cart-price-breakdown"><div><span>المجموع الفرعي</span><b>{money(total,currency)}</b></div>{discount>0&&<div><span>خصم الكوبون</span><b>- {money(discount,currency)}</b></div>}{loyaltyDiscount>0&&<div><span>خصم نقاط الولاء</span><b>- {money(loyaltyDiscount,currency)}</b></div>}{Number(form.deliveryFee||0)>0&&<div><span>التوصيل</span><b>+ {money(form.deliveryFee,currency)}</b></div>}</div><div className="total cart-total"><span>الإجمالي</span><div className="total-values"><b>{money(finalPreview,currency)}</b><small>{moneyInWords(finalPreview,currency)}</small></div></div>{err&&<div className="error cart-submit-error">{err}</div>}<button type="submit" disabled={busy||!cart.length} className="btn primary cart-submit-btn">{busy?'جاري إرسال الطلب…':'إرسال الطلب'}</button></div></form></div></div>;
+}
 function TrackingModal({result,onClose}){const statuses={new:'جديد',confirmed:'مؤكد',preparing:'قيد التحضير',ready:'جاهز',delivered:'تم التسليم',cancelled:'ملغى'};const orderStatus=result.status||'new';const steps=['new','confirmed','preparing','ready','delivered'];const current=steps.indexOf(orderStatus);return <div className="modal-bg"><div className="modal tracking-modal"><button className="close" onClick={onClose}><X/></button><span className="eyebrow">الطلب #{result.id}</span><h2>{statuses[orderStatus]||orderStatus}</h2><div className="tracking-steps">{steps.map((s,i)=><div key={s} className={`tracking-step ${orderStatus==='cancelled'?'cancelled ':''}${i<=current&&orderStatus!=='cancelled'?'done':''}`}><span>{i+1}</span><b>{statuses[s]}</b></div>)}</div>{orderStatus==='cancelled'&&<div className="tracking-cancelled">تم إلغاء هذا الطلب.</div>}{result.estimatedReadyAt&&<div className="tracking-eta">الوقت التقديري للجهوزية: {new Date(result.estimatedReadyAt).toLocaleTimeString('ar-LB',{hour:'2-digit',minute:'2-digit'})}</div>}<div className="tracking-summary"><span>المجموع</span><div className="total-values"><b>{money(result.total,result.currency||'ل.ل')}</b><small>{moneyInWords(result.total,result.currency||'ل.ل')}</small></div></div><button className="btn ghost full" onClick={onClose}>إغلاق</button></div></div>}
 function SuccessModal({result,phone,onClose}){return <div className="modal-bg"><div className="modal success"><CheckCircle2 size={54}/><h2>تم استلام طلبك 🎉</h2><div className="order-number-card"><span>رقم طلبك</span><strong>#{result.id}</strong></div><div className="tracking-reminder"><b>⚠️ مهم: احتفظ برقم الطلب</b><span>ستحتاج إلى رقم الطلب هذا مع رقم الهاتف المستخدم عند الطلب لتتبع حالة طلبك لاحقاً.</span></div><p>سنتواصل معك لتأكيد الطلب.</p>{!result.whatsappSent&&phone&&<a className="btn primary full" href={result.waLink} target="_blank">تأكيد عبر WhatsApp</a>}<button className="btn ghost full" onClick={onClose}>إغلاق</button></div></div>}
 function Footer({settings}){return <footer id="contact"><b>{settings.siteName}</b><span>{settings.tagline}</span><small>© {new Date().getFullYear()} جميع الحقوق محفوظة</small></footer>}
@@ -574,7 +280,7 @@ function Editor({type,value,categories,onCancel,onSave}){
     <div className="editor-actions"><button className="btn primary" disabled={uploading} onClick={()=>onSave(f)}>حفظ</button><button className="btn ghost" onClick={onCancel}>إلغاء</button></div>
   </div>
 }
-function SettingsPanel({data,refresh}){const {run}=useProgress();const [f,setF]=useState({...data.settings});const [logoBusy,setLogoBusy]=useState(false);const [logoError,setLogoError]=useState('');const [waTest,setWaTest]=useState('');const save=async()=>{await run('جاري حفظ إعدادات الموقع…',()=>api('/admin/settings',{method:'PUT',body:JSON.stringify(f)}));applyTheme(f);await refresh()};const uploadLogo=async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;setLogoError('');if(!/^image\/(jpeg|png|webp|gif)$/.test(file.type)){setLogoError('استخدم JPG أو PNG أو WEBP أو GIF.');return}if(file.size>4*1024*1024){setLogoError('حجم الشعار يجب ألا يتجاوز 4MB.');return}setLogoBusy(true);try{const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('تعذر قراءة الملف.'));r.readAsDataURL(file)});const result=await run('جاري رفع الشعار…',()=>api('/admin/upload-logo',{method:'POST',body:JSON.stringify({dataUrl,fileName:file.name})}));setF(x=>({...x,logoUrl:result.url}))}catch(err){setLogoError(err.message||'تعذر رفع الشعار.')}finally{setLogoBusy(false)}};return <section className="panel settings-panel"><h2>هوية الموقع</h2><div className="form-grid"><label>اسم الموقع<input value={f.siteName||''} onChange={e=>setF({...f,siteName:e.target.value})}/></label><div className="logo-upload-block"><label>الشعار / رابط الصورة<input value={f.logoUrl||''} onChange={e=>setF({...f,logoUrl:e.target.value})}/></label><label className="image-upload-field logo-upload-field"><span>أو اختر الشعار من جهازك</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={logoBusy} onChange={uploadLogo}/><small>{logoBusy?'جاري رفع الشعار…':'يمكنك اختيار صورة مباشرة من الهاتف أو الكمبيوتر.'}</small></label>{logoError&&<div className="error">{logoError}</div>}{f.logoUrl&&<div className="logo-preview"><img src={f.logoUrl} alt="معاينة الشعار"/><button type="button" className="btn ghost" disabled={logoBusy} onClick={()=>setF(x=>({...x,logoUrl:''}))}>إزالة الشعار</button></div>}</div><label>الوصف المختصر<input value={f.tagline||''} onChange={e=>setF({...f,tagline:e.target.value})}/></label><label>رقم الهاتف / WhatsApp<input value={f.phone||''} onChange={e=>setF({...f,phone:e.target.value})}/></label><label>العملة<input value={f.currency||''} onChange={e=>setF({...f,currency:e.target.value})}/></label></div><h2>الثيم والمناسبة</h2><div className="theme-grid">{Object.entries(themes).map(([k,t])=><button key={k} className={f.theme===k?'theme selected':'theme'} onClick={()=>setF({...f,theme:k,primary:t.primary,secondary:t.secondary,background:t.background})}><span style={{background:t.primary}}></span><b>{t.label}</b></button>)}</div><div className="custom-colors"><label>اللون الأساسي<input type="color" value={f.primary||'#9a3412'} onChange={e=>setF({...f,primary:e.target.value,theme:'custom'})}/></label><label>اللون الثانوي<input type="color" value={f.secondary||'#f59e0b'} onChange={e=>setF({...f,secondary:e.target.value,theme:'custom'})}/></label><label>لون الخلفية<input type="color" value={f.background||'#fffaf3'} onChange={e=>setF({...f,background:e.target.value,theme:'custom'})}/></label></div><button className="btn primary" onClick={save}>حفظ التغييرات</button></section>}
+function SettingsPanel({data,refresh}){const {run}=useProgress();const [f,setF]=useState({...data.settings});const [logoBusy,setLogoBusy]=useState(false);const [logoError,setLogoError]=useState('');const [waTest,setWaTest]=useState('');const save=async()=>{await run('جاري حفظ إعدادات الموقع…',()=>api('/admin/settings',{method:'PUT',body:JSON.stringify(f)}));applyTheme(f);await refresh()};const uploadLogo=async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;setLogoError('');if(!/^image\/(jpeg|png|webp|gif)$/.test(file.type)){setLogoError('استخدم JPG أو PNG أو WEBP أو GIF.');return}if(file.size>4*1024*1024){setLogoError('حجم الشعار يجب ألا يتجاوز 4MB.');return}setLogoBusy(true);try{const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('تعذر قراءة الملف.'));r.readAsDataURL(file)});const result=await run('جاري رفع الشعار…',()=>api('/admin/upload-logo',{method:'POST',body:JSON.stringify({dataUrl,fileName:file.name})}));setF(x=>({...x,logoUrl:result.url}))}catch(err){setLogoError(err.message||'تعذر رفع الشعار.')}finally{setLogoBusy(false)}};return <section className="panel settings-panel"><h2>هوية الموقع</h2><div className="form-grid"><label>اسم الموقع<input value={f.siteName||''} onChange={e=>setF({...f,siteName:e.target.value})}/></label><div className="logo-upload-block"><label>الشعار / رابط الصورة<input value={f.logoUrl||''} onChange={e=>setF({...f,logoUrl:e.target.value})}/></label><label className="image-upload-field logo-upload-field"><span>أو اختر الشعار من جهازك</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={logoBusy} onChange={uploadLogo}/><small>{logoBusy?'جاري رفع الشعار…':'يمكنك اختيار صورة مباشرة من الهاتف أو الكمبيوتر.'}</small></label>{logoError&&<div className="error">{logoError}</div>}{f.logoUrl&&<div className="logo-preview"><img src={f.logoUrl} alt="معاينة الشعار"/><button type="button" className="btn ghost" disabled={logoBusy} onClick={()=>setF(x=>({...x,logoUrl:''}))}>إزالة الشعار</button></div>}</div><label>الوصف المختصر<input value={f.tagline||''} onChange={e=>setF({...f,tagline:e.target.value})}/></label><label>رقم الهاتف / WhatsApp<input value={f.phone||''} onChange={e=>setF({...f,phone:e.target.value})}/></label><label>العملة<input value={f.currency||''} onChange={e=>setF({...f,currency:e.target.value})}/></label></div><h2>برنامج الولاء</h2><div className="loyalty-admin-grid"><label><span>تفعيل البرنامج</span><select value={f.loyaltyEnabled||'true'} onChange={e=>setF({...f,loyaltyEnabled:e.target.value})}><option value="true">فعال</option><option value="false">متوقف</option></select></label><label><span>كل مبلغ (ل.ل) يمنح نقطة</span><input type="number" min="1" step="1" value={f.loyaltyEarnAmount||10000} onChange={e=>setF({...f,loyaltyEarnAmount:e.target.value})}/></label><label><span>قيمة النقطة ({f.currency||'ل.ل'})</span><input type="number" min="1" step="1" value={f.loyaltyPointValue||1000} onChange={e=>setF({...f,loyaltyPointValue:e.target.value})}/></label><label><span>الحد الأدنى للاستبدال</span><input type="number" min="0" step="1" value={f.loyaltyMinRedeem||10} onChange={e=>setF({...f,loyaltyMinRedeem:e.target.value})}/></label><label><span>أقصى نسبة من قيمة المنتجات</span><input type="number" min="0" max="100" step="1" value={f.loyaltyMaxRedeemPercent||50} onChange={e=>setF({...f,loyaltyMaxRedeemPercent:e.target.value})}/></label></div><p className="settings-help">الافتراضي: نقطة لكل 10,000 ل.ل، وقيمة النقطة 1,000 ل.ل. تُمنح النقاط بعد تسليم الطلب.</p><h2>الثيم والمناسبة</h2><div className="theme-grid">{Object.entries(themes).map(([k,t])=><button key={k} className={f.theme===k?'theme selected':'theme'} onClick={()=>setF({...f,theme:k,primary:t.primary,secondary:t.secondary,background:t.background})}><span style={{background:t.primary}}></span><b>{t.label}</b></button>)}</div><div className="custom-colors"><label>اللون الأساسي<input type="color" value={f.primary||'#9a3412'} onChange={e=>setF({...f,primary:e.target.value,theme:'custom'})}/></label><label>اللون الثانوي<input type="color" value={f.secondary||'#f59e0b'} onChange={e=>setF({...f,secondary:e.target.value,theme:'custom'})}/></label><label>لون الخلفية<input type="color" value={f.background||'#fffaf3'} onChange={e=>setF({...f,background:e.target.value,theme:'custom'})}/></label></div><button className="btn primary" onClick={save}>حفظ التغييرات</button></section>}
 function UsersPanel({data,refresh,canAddAdmin}){const {run}=useProgress();const [editing,setEditing]=useState(null);const save=async f=>{try{await run(f.id?'جاري حفظ تعديل المستخدم…':'جاري إضافة المستخدم…',()=>api('/admin/users'+(f.id?'/'+f.id:''),{method:f.id?'PUT':'POST',body:JSON.stringify(f)}));setEditing(null);await refresh()}catch(e){throw e}};return <section className="panel"><div className="toolbar"><span>يمكنك تحديد الصلاحيات لكل موظف.</span><button className="btn primary" onClick={()=>setEditing({name:'',email:'',password:'',role:'staff',permissions:['RECEIVE_ORDERS'],active:true})}><Plus/> مستخدم جديد</button></div>{editing&&<UserEditor value={editing} canAddAdmin={canAddAdmin} onCancel={()=>setEditing(null)} onSave={save}/>}<div className="user-list">{data.users.map(u=><div className="user-card" key={u.id}><div className="avatar">{u.name?.[0]||'م'}</div><div><b>{u.name}</b><span>{u.email}</span><small>{u.role==='admin'?'مدير كامل':u.permissions.map(p=>perms.find(x=>x[0]===p)?.[1]).filter(Boolean).join(' • ')}</small></div><div className="user-actions"><span className={u.active?'active-text':'muted'}>{u.active?'فعال':'موقوف'}</span><button className="icon-btn" onClick={()=>setEditing({...u,password:''})}><Edit3 size={17}/></button></div></div>)}</div></section>}
 function UserEditor({value,canAddAdmin,onCancel,onSave}){const [f,setF]=useState(value);const [confirmPassword,setConfirmPassword]=useState('');const [error,setError]=useState('');const toggle=p=>setF({...f,permissions:f.permissions.includes(p)?f.permissions.filter(x=>x!==p):[...f.permissions,p]});const save=async()=>{setError('');if(!f.id&&!f.password){setError('كلمة المرور مطلوبة.');return}if(f.password&&f.password.length<10){setError('كلمة المرور يجب أن تكون 10 أحرف على الأقل.');return}if(f.password!==confirmPassword){setError('كلمتا المرور غير متطابقتين.');return}if(f.role==='admin'&&!canAddAdmin){setError('لا تملك صلاحية إضافة مدير.');return}try{await onSave(f)}catch(e){setError(e?.message||'تعذر حفظ المستخدم.')}};return <div className="editor"><div className="editor-head"><b>{f.id?'تعديل المستخدم':'إضافة مستخدم'}</b><button onClick={onCancel}><X/></button></div>{error&&<div className="user-form-error" role="alert" aria-live="polite">{error}</div>}<input placeholder="الاسم" value={f.name} onChange={e=>{setF({...f,name:e.target.value});setError('')}}/><input type="email" placeholder="البريد" value={f.email} onChange={e=>{setF({...f,email:e.target.value});setError('')}}/><input type="password" placeholder={f.id?'كلمة مرور جديدة (اختياري)':'كلمة المرور'} value={f.password} onChange={e=>{setF({...f,password:e.target.value});setError('')}} autoComplete="new-password" minLength={10}/>{(f.password||!f.id)&&<input type="password" placeholder="مطابقة كلمة المرور" value={confirmPassword} onChange={e=>{setConfirmPassword(e.target.value);setError('')}} autoComplete="new-password" minLength={10}/>}<label>الدور<select value={f.role} onChange={e=>setF({...f,role:e.target.value})}><option value="staff">موظف</option>{canAddAdmin&&<option value="admin">مدير كامل</option>}</select></label><div className="perm-box">{perms.map(([p,l])=><label key={p}><input type="checkbox" checked={f.role==='admin'||f.permissions.includes(p)} disabled={f.role==='admin'||(p==='ADD_ADMIN'&&!canAddAdmin)} onChange={()=>toggle(p)}/>{l}</label>)}</div><label><input type="checkbox" checked={!!f.active} onChange={e=>setF({...f,active:e.target.checked})}/> الحساب فعال</label><div className="editor-actions"><button className="btn primary" onClick={save}>حفظ</button><button className="btn ghost" onClick={onCancel}>إلغاء</button></div></div>}
 function App(){const isAdmin=location.pathname.startsWith('/admin');const [logged,setLogged]=useState(null);useEffect(()=>{if(!isAdmin){setLogged(true);return}api('/auth/me').then(()=>setLogged(true)).catch(()=>setLogged(false));},[isAdmin]);useEffect(()=>{if(isAdmin)document.title='لوحة الإدارة | فرنية صاج';},[isAdmin]);if(isAdmin){if(logged===null)return <div className="loader">جاري التحقق من الجلسة…</div>;return logged?<Admin/>:<Login onLogin={()=>setLogged(true)}/>}return <Home/>}
