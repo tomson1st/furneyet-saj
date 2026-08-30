@@ -30,7 +30,8 @@ const settingDefaults = {
   secondary: '#f59e0b',
   background: '#fffaf3',
   theme: 'classic',
-  whatsappEnabled: 'false'
+  whatsappEnabled: 'false',
+  whatsappRecipient: ''
 };
 
 async function query(text, params = []) {
@@ -111,11 +112,13 @@ function tokenFor(u) {
   return jwt.sign({ id: Number(u.id), name: u.name, email: u.email, role: u.role, permissions: JSON.parse(u.permissions || '[]') }, JWT_SECRET, { expiresIn: '7d' });
 }
 
+function safeWhatsAppRecipient(s) { return s?.whatsappRecipient || ''; }
+
 async function sendWhatsAppOrder(order) {
   if (process.env.WHATSAPP_ENABLED !== 'true') return false;
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const recipient = process.env.WHATSAPP_RECIPIENT_PHONE;
+  const recipient = String(safeWhatsAppRecipient(await getSettings()) || process.env.WHATSAPP_RECIPIENT_PHONE || '').replace(/\D/g, '');
   if (!token || !phoneId || !recipient) return false;
   const s = await getSettings();
   const lines = order.items.map(i => `• ${i.name} × ${i.quantity} = ${Number(i.price) * i.quantity} ${s.currency}`).join('\n');
@@ -391,6 +394,25 @@ app.post('/api/auth/login', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 app.get('/api/auth/me', auth, (req, res) => res.json({ user: req.user }));
+
+app.post('/api/admin/whatsapp/test', auth, requirePerm('MANAGE_SETTINGS'), async (req, res, next) => {
+  try {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const settings = await getSettings();
+    const recipient = String(settings.whatsappRecipient || process.env.WHATSAPP_RECIPIENT_PHONE || '').replace(/\D/g, '');
+    if (!token || !phoneId || !recipient) {
+      return res.status(400).json({ error: 'إعدادات WhatsApp غير مكتملة. تأكد من WHATSAPP_ACCESS_TOKEN وWHATSAPP_PHONE_NUMBER_ID ورقم الاستقبال.' });
+    }
+    const r = await fetch(`https://graph.facebook.com/v22.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to: recipient, type: 'text', text: { body: 'اختبار WhatsApp من موقع فرنية صاج ✓' } })
+    });
+    if (!r.ok) return res.status(502).json({ error: `فشل إرسال اختبار WhatsApp: ${await r.text()}` });
+    res.json({ ok: true, message: 'تم إرسال رسالة الاختبار بنجاح.' });
+  } catch (e) { next(e); }
+});
 
 app.get('/api/admin/data', auth, async (req, res, next) => {
   try {
