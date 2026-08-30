@@ -587,7 +587,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'بعض بيانات الطلب طويلة جداً' });
     }
 
-    const itemIds = items.map(x => Number(x.itemId)).filter(n => Number.isInteger(n) && n > 0);
+    const itemIds = items.map(x => { const n = Number(x?.itemId); return Number.isInteger(n) && n > 0 ? n : Number(x?.productId); }).filter(n => Number.isInteger(n) && n > 0);
     const offerIds = items
       .map(x => Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN)))
       .filter(n => Number.isInteger(n) && n > 0);
@@ -610,7 +610,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
         return res.status(400).json({ error: 'كمية غير صالحة في الطلب' });
       }
       const qty = rawQty;
-      const numericItemId = Number(x.itemId);
+      const numericItemId = (() => { const n = Number(x?.itemId); if (Number.isInteger(n) && n > 0) return n; const p = Number(x?.productId); return Number.isInteger(p) && p > 0 ? p : NaN; })();
       const offerId = Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN));
 
       if (Number.isInteger(offerId) && offerId > 0 && offerMap.has(offerId)) {
