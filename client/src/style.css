@@ -2279,3 +2279,9 @@ footer {
   .order-history-panel { padding: 13px; }
   .order-history-head h3 { font-size: 15px; }
 }
+
+.whatsapp-settings{display:grid;gap:12px;margin-bottom:22px;padding:16px;border:1px solid var(--border,#eadfce);border-radius:16px;background:rgba(255,255,255,.55)}
+.whatsapp-settings .check-row{display:flex;align-items:center;gap:9px;font-weight:700}
+.whatsapp-settings .check-row input{width:18px;height:18px}
+.settings-help{color:var(--muted,#756d63);line-height:1.7}
+.settings-test-message{padding:10px 12px;border-radius:10px;background:rgba(34,197,94,.12);color:#166534;font-weight:700}
