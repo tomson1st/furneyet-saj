@@ -18,6 +18,7 @@ const checks = [
   ['User management is admin-only', /\/api\/admin\/users', auth, requireCsrf, requireAdmin/.test(server)],
   ['Admin data is permission-scoped', /const canOrders =/.test(server) && /const canUsers =/.test(server)],
   ['Public settings are allowlisted', /PUBLIC_SETTING_KEYS/.test(server)],
+  ['Legacy snake_case settings are normalized', /site_name: 'siteName'/.test(server) && /migrateLegacySettings/.test(server)],
   ['Login rate limiting exists', /loginLimiter/.test(server)],
   ['Order rate limiting exists', /orderLimiter/.test(server)],
   ['Client no longer stores JWT in localStorage', !client.includes('localStorage') && !client.includes('Authorization')],

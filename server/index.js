@@ -40,9 +40,56 @@ async function query(text, params = []) {
   return pool.query(text, params);
 }
 
+const SETTING_ALIASES = {
+  site_name: 'siteName',
+  site_title: 'siteName',
+  tagline_text: 'tagline',
+  logo_url: 'logoUrl',
+  logo: 'logoUrl',
+  phone_number: 'phone',
+  currency_code: 'currency',
+  primary_color: 'primary',
+  secondary_color: 'secondary',
+  background_color: 'background',
+  theme_name: 'theme',
+  whatsapp_enabled: 'whatsappEnabled',
+  whatsapp_recipient: 'whatsappRecipient',
+  whatsapp_phone: 'whatsappRecipient'
+};
+
 async function getSettings() {
   const { rows } = await query('SELECT key,value FROM settings');
-  return Object.fromEntries(rows.map(x => [x.key, x.value]));
+  const raw = Object.fromEntries(rows.map(x => [x.key, x.value]));
+  const settings = { ...settingDefaults };
+
+  // Support databases created by older versions that used snake_case keys.
+  for (const [key, value] of Object.entries(raw)) {
+    const canonical = SETTING_ALIASES[key] || key;
+    if (Object.prototype.hasOwnProperty.call(settingDefaults, canonical) || canonical === 'whatsappRecipient') {
+      // Canonical keys win when both old and new keys exist.
+      if (!Object.prototype.hasOwnProperty.call(raw, canonical) || key === canonical) {
+        settings[canonical] = value;
+      }
+    }
+  }
+
+  return settings;
+}
+
+async function migrateLegacySettings() {
+  for (const [legacyKey, canonicalKey] of Object.entries(SETTING_ALIASES)) {
+    const legacy = await query('SELECT value FROM settings WHERE key=$1 LIMIT 1', [legacyKey]);
+    if (!legacy.rows[0]) continue;
+
+    const canonical = await query('SELECT value FROM settings WHERE key=$1 LIMIT 1', [canonicalKey]);
+    if (!canonical.rows[0]) {
+      await query(
+        'INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING',
+        [canonicalKey, legacy.rows[0].value]
+      );
+    }
+    await query('DELETE FROM settings WHERE key=$1', [legacyKey]);
+  }
 }
 
 async function ensureOrderHistoryTable() {
@@ -61,6 +108,7 @@ async function ensureOrderHistoryTable() {
 }
 
 async function seed() {
+  await migrateLegacySettings();
   for (const [k, v] of Object.entries(settingDefaults)) {
     await query('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [k, String(v)]);
   }
