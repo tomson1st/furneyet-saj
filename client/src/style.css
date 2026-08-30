@@ -1024,8 +1024,14 @@ td select {
 }
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
+}
+.form-grid > label,
+.form-grid > .logo-upload-block {
+  align-self: start;
+  min-width: 0;
 }
 .form-grid label,
 .custom-colors label {
@@ -2119,7 +2125,12 @@ footer {
 }
 
 /* Site-logo upload and preview in administration. */
-.logo-upload-block { display: grid; gap: 9px; }
+.logo-upload-block {
+  display: grid;
+  gap: 9px;
+  align-self: start;
+  min-width: 0;
+}
 .logo-upload-field { background: var(--bg); }
 .logo-preview {
   display: flex;
