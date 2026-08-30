@@ -921,43 +921,75 @@ app.put('/api/admin/coupons/:id',auth,requireCsrf,requirePerm('MANAGE_ITEMS'),as
 app.delete('/api/admin/coupons/:id',auth,requireCsrf,requirePerm('MANAGE_ITEMS'),async(req,res,next)=>{try{const id=Number(req.params.id);if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'معرّف الكوبون غير صالح'});const q=await query('DELETE FROM coupons WHERE id=$1 RETURNING id',[id]);if(!q.rows[0])return res.status(404).json({error:'الكوبون غير موجود'});res.json({ok:true})}catch(e){next(e)}});
 app.get('/api/admin/analytics',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,next)=>{
   try {
-    // Keep the summary/day queries in SQL, but parse order snapshots in JavaScript.
-    // Older orders may contain malformed/legacy items_json, and casting those rows
-    // directly to jsonb can make the whole analytics endpoint return HTTP 500.
-    const [summaryQ, dayQ, itemsQ] = await Promise.all([
-      query("SELECT COUNT(*)::int orders,COALESCE(SUM(total),0) revenue,COUNT(*) FILTER(WHERE status='delivered')::int delivered,COUNT(*) FILTER(WHERE status='cancelled')::int cancelled,COALESCE(AVG(total),0) avg_order FROM orders"),
-      query("SELECT TO_CHAR(created_at AT TIME ZONE 'Asia/Beirut','YYYY-MM-DD') day,COUNT(*)::int orders,COALESCE(SUM(total),0) revenue FROM orders WHERE created_at>=NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY 1"),
-      query("SELECT items_json FROM orders WHERE created_at>=NOW()-INTERVAL '90 days'")
-    ]);
-
+    // Build analytics from the raw order rows instead of relying on SQL aggregate
+    // expressions. This keeps the endpoint compatible with older PostgreSQL schemas
+    // and legacy data while still calculating the same dashboard metrics.
+    const q = await query('SELECT id,total,status,created_at,items_json FROM orders ORDER BY id DESC');
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+    let orders = 0, revenue = 0, delivered = 0, cancelled = 0;
+    const byDayMap = new Map();
     const bestMap = new Map();
-    for (const row of itemsQ.rows) {
-      if (row.items_json == null) continue;
-      let items;
-      try {
-        items = Array.isArray(row.items_json) ? row.items_json : JSON.parse(String(row.items_json));
-      } catch {
-        continue;
+
+    for (const row of q.rows) {
+      const total = Number(row.total);
+      const amount = Number.isFinite(total) ? total : 0;
+      orders += 1;
+      revenue += amount;
+      if (String(row.status) === 'delivered') delivered += 1;
+      if (String(row.status) === 'cancelled') cancelled += 1;
+
+      const created = row.created_at instanceof Date ? row.created_at : new Date(row.created_at);
+      const time = created.getTime();
+      if (!Number.isFinite(time)) continue;
+
+      if (time >= thirtyDaysAgo) {
+        const day = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Beirut', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(created);
+        const current = byDayMap.get(day) || { orders: 0, revenue: 0 };
+        current.orders += 1;
+        current.revenue += amount;
+        byDayMap.set(day, current);
       }
-      if (!Array.isArray(items)) continue;
-      for (const item of items) {
-        if (!item || typeof item !== 'object') continue;
-        const name = String(item.name || '').trim();
-        const quantity = Number(item.quantity);
-        if (!name || !Number.isFinite(quantity) || quantity <= 0) continue;
-        bestMap.set(name, (bestMap.get(name) || 0) + quantity);
+
+      if (time >= ninetyDaysAgo && row.items_json != null) {
+        let items = null;
+        try {
+          items = Array.isArray(row.items_json) ? row.items_json : JSON.parse(String(row.items_json));
+        } catch {
+          items = null;
+        }
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            if (!item || typeof item !== 'object') continue;
+            const name = String(item.name || '').trim();
+            const quantity = Number(item.quantity);
+            if (!name || !Number.isFinite(quantity) || quantity <= 0) continue;
+            bestMap.set(name, (bestMap.get(name) || 0) + quantity);
+          }
+        }
       }
     }
 
+    const byDay = [...byDayMap.entries()]
+      .sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([day,value])=>({day,orders:value.orders,revenue:Number(value.revenue.toFixed(2))}));
     const bestsellers = [...bestMap.entries()]
       .sort((a,b)=>b[1]-a[1])
       .slice(0,10)
       .map(([name,quantity])=>({name,quantity:Number(quantity)}));
 
-    const summary=summaryQ.rows[0]||{};
     res.json({
-      summary:{...summary,revenue:Number(summary.revenue||0),avg_order:Number(summary.avg_order||0),orders:Number(summary.orders||0),delivered:Number(summary.delivered||0),cancelled:Number(summary.cancelled||0)},
-      byDay:dayQ.rows.map(x=>({...x,orders:Number(x.orders||0),revenue:Number(x.revenue||0)})),
+      summary:{
+        orders,
+        revenue:Number(revenue.toFixed(2)),
+        delivered,
+        cancelled,
+        avg_order:orders ? Number((revenue / orders).toFixed(2)) : 0
+      },
+      byDay,
       bestsellers
     });
   } catch(e) {
