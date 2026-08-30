@@ -16,7 +16,7 @@ html {
 }
 body {
   margin: 0;
-  font-family: Tahoma, "Arial", sans-serif;
+  font-family: "DroidArabicKufiRegular", "Droid Arabic Kufi", Tahoma, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
 }
@@ -1445,7 +1445,7 @@ button,
 input,
 textarea,
 select {
-  font-family: Tahoma, Arial, sans-serif !important;
+  font-family: "DroidArabicKufiRegular", "Droid Arabic Kufi", Tahoma, Arial, sans-serif !important;
 }
 
 /* Remove the oversized empty space around the top of the page. */
