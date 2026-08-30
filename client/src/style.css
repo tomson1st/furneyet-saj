@@ -2217,82 +2217,65 @@ footer {
 }
 
 
-/* New-order notification and sidebar badge */
-.side {
-  position: relative;
+
+/* V12 — Order status history */
+.order-history-panel {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fffaf7;
+  padding: 16px;
 }
-.side-label {
-  flex: 1;
-}
-.nav-badge {
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 999px;
-  display: inline-grid;
-  place-items: center;
-  background: #dc2626;
-  color: #fff;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 800;
-  line-height: 1;
-  box-shadow: 0 0 0 2px #251b15;
-}
-.new-order-toast {
-  position: fixed;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  width: min(520px, calc(100% - 28px));
+.order-history-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 13px 15px;
-  border: 1px solid #f59e0b;
-  border-radius: 16px;
-  background: #fffaf0;
-  box-shadow: 0 12px 30px rgba(37,27,21,.18);
-  animation: new-order-toast-in .22s ease-out;
+  margin-bottom: 12px;
 }
-.new-order-toast-icon {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+.order-history-head h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+.order-history-list {
   display: grid;
-  place-items: center;
+  gap: 9px;
+}
+.order-history-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #f59e0b;
-  color: #fff;
+  padding: 10px 12px;
 }
-.new-order-toast > div:nth-child(2) {
-  min-width: 0;
-  flex: 1;
+.order-history-entry > div:last-child {
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
-.new-order-toast b { font-size: 14px; }
-.new-order-toast span { color: var(--muted); font-size: 12px; }
-.new-order-toast button {
-  border: 0;
-  border-radius: 10px;
-  padding: 9px 11px;
-  background: var(--primary);
-  color: #fff;
-  cursor: pointer;
-  font-family: inherit;
-  font-weight: 700;
-  white-space: nowrap;
+.order-history-entry small {
+  color: var(--muted);
+  font-size: 10px;
 }
-@keyframes new-order-toast-in {
-  from { opacity: 0; transform: translate(-50%, -10px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+.history-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex: 0 0 auto;
 }
-@media (max-width: 560px) {
-  .new-order-toast { align-items: flex-start; }
-  .new-order-toast button { align-self: center; padding-inline: 9px; }
+.history-status-dot.status-new { background: #2563eb; }
+.history-status-dot.status-confirmed { background: #7c3aed; }
+.history-status-dot.status-preparing { background: #d97706; }
+.history-status-dot.status-ready { background: #059669; }
+.history-status-dot.status-delivered { background: #16a34a; }
+.history-status-dot.status-cancelled { background: #dc2626; }
+.history-btn {
+  min-width: 36px;
+  min-height: 36px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .new-order-toast { animation: none; }
+@media (max-width: 700px) {
+  .order-history-panel { padding: 13px; }
+  .order-history-head h3 { font-size: 15px; }
 }
