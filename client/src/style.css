@@ -2366,3 +2366,8 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   .new-order-toast { animation: none; }
 }
+
+/* Offer ordering */
+.offer-content{flex:1;min-width:0}
+.offer-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px}
+.offer-add{flex:0 0 auto}
