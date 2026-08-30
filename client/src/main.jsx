@@ -1,4 +1,4 @@
-import React,{createContext,useContext,useEffect,useMemo,useState} from 'react';
+import React,{createContext,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ShoppingBag,Plus,Minus,Trash2,Users,ClipboardList,LogOut,Star,Palette,ChevronLeft,CheckCircle2,Phone,MapPin,Clock,Edit3,X,Tags,Image as ImageIcon} from 'lucide-react';
 import './style.css';
@@ -41,6 +41,15 @@ function Orders({data,refresh}){
   const [dateFilter,setDateFilter]=useState('all');
   const [specificDate,setSpecificDate]=useState('');
   const [history,setHistory]=useState(null);
+  const historyPanelRef=useRef(null);
+
+  useEffect(()=>{
+    if(!history)return;
+    const timer=setTimeout(()=>{
+      historyPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
+    },60);
+    return ()=>clearTimeout(timer);
+  },[history]);
 
   const getOrderDate=order=>{
     const raw=String(order.created_at||'');
@@ -112,7 +121,7 @@ function Orders({data,refresh}){
         <td>{o.whatsapp_sent?'✓ أُرسلت':'—'}</td>
       </tr>)}
     </tbody></table></div>
-    {history&&<div className="order-history-panel">
+    {history&&<div ref={historyPanelRef} id="order-history-panel" className="order-history-panel">
       <div className="order-history-head"><div><span className="eyebrow">سجل الطلب</span><h3>الطلب #{history.order.id}</h3></div><button className="icon-btn" onClick={()=>setHistory(null)} title="إغلاق"><X size={17}/></button></div>
       {history.history.length===0?<p className="muted">لا يوجد سجل تغييرات لهذا الطلب حتى الآن.</p>:<div className="order-history-list">{history.history.map(h=><div className="order-history-entry" key={h.id}><div className={`history-status-dot status-${h.new_status}`}></div><div><b>{statuses[h.old_status]||h.old_status} → {statuses[h.new_status]||h.new_status}</b><small>{h.changed_by_name||'الإدارة'} · {new Date(h.changed_at).toLocaleString('ar-LB',{timeZone:'Asia/Beirut'})}</small></div></div>)}</div>}
     </div>}
