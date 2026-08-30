@@ -919,7 +919,52 @@ app.delete('/api/admin/zones/:id',auth,requireCsrf,requirePerm('MANAGE_ITEMS'),a
 app.post('/api/admin/coupons',auth,requireCsrf,requirePerm('MANAGE_ITEMS'),async(req,res,next)=>{try{const code=String(req.body?.code||'').trim().toUpperCase(),type=String(req.body?.type||'fixed'),value=Number(req.body?.value||0),minOrder=Number(req.body?.min_order||0),maxUses=req.body?.max_uses===''||req.body?.max_uses==null?null:Number(req.body.max_uses),active=req.body?.active!==false,startsAt=req.body?.starts_at||null,endsAt=req.body?.ends_at||null;if(!code||code.length>60||!['fixed','percent'].includes(type)||!Number.isFinite(value)||value<0||type==='percent'&&value>100||!Number.isFinite(minOrder)||minOrder<0||maxUses!==null&&(!Number.isInteger(maxUses)||maxUses<0))return res.status(400).json({error:'بيانات كوبون الخصم غير صالحة'});const q=await query('INSERT INTO coupons(code,type,value,min_order,max_uses,active,starts_at,ends_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[code,type,value,minOrder,maxUses,active,startsAt,endsAt]);res.status(201).json({...q.rows[0],id:Number(q.rows[0].id),value:Number(q.rows[0].value),min_order:Number(q.rows[0].min_order),active:!!q.rows[0].active})}catch(e){if(e.code==='23505')return res.status(409).json({error:'رمز الخصم موجود مسبقاً'});next(e)}});
 app.put('/api/admin/coupons/:id',auth,requireCsrf,requirePerm('MANAGE_ITEMS'),async(req,res,next)=>{try{const id=Number(req.params.id),code=String(req.body?.code||'').trim().toUpperCase(),type=String(req.body?.type||'fixed'),value=Number(req.body?.value||0),minOrder=Number(req.body?.min_order||0),maxUses=req.body?.max_uses===''||req.body?.max_uses==null?null:Number(req.body.max_uses),active=req.body?.active!==false,startsAt=req.body?.starts_at||null,endsAt=req.body?.ends_at||null;if(!Number.isInteger(id)||id<1||!code||code.length>60||!['fixed','percent'].includes(type)||!Number.isFinite(value)||value<0||type==='percent'&&value>100||!Number.isFinite(minOrder)||minOrder<0||maxUses!==null&&(!Number.isInteger(maxUses)||maxUses<0))return res.status(400).json({error:'بيانات كوبون الخصم غير صالحة'});const q=await query('UPDATE coupons SET code=$1,type=$2,value=$3,min_order=$4,max_uses=$5,active=$6,starts_at=$7,ends_at=$8 WHERE id=$9 RETURNING *',[code,type,value,minOrder,maxUses,active,startsAt,endsAt,id]);if(!q.rows[0])return res.status(404).json({error:'الكوبون غير موجود'});res.json({...q.rows[0],id:Number(q.rows[0].id),value:Number(q.rows[0].value),min_order:Number(q.rows[0].min_order),active:!!q.rows[0].active})}catch(e){if(e.code==='23505')return res.status(409).json({error:'رمز الخصم موجود مسبقاً'});next(e)}});
 app.delete('/api/admin/coupons/:id',auth,requireCsrf,requirePerm('MANAGE_ITEMS'),async(req,res,next)=>{try{const id=Number(req.params.id);if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'معرّف الكوبون غير صالح'});const q=await query('DELETE FROM coupons WHERE id=$1 RETURNING id',[id]);if(!q.rows[0])return res.status(404).json({error:'الكوبون غير موجود'});res.json({ok:true})}catch(e){next(e)}});
-app.get('/api/admin/analytics',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,next)=>{try{const [a,d,b]=await Promise.all([query("SELECT COUNT(*)::int orders,COALESCE(SUM(total),0) revenue,COUNT(*) FILTER(WHERE status='delivered')::int delivered,COUNT(*) FILTER(WHERE status='cancelled')::int cancelled,COALESCE(AVG(total),0) avg_order FROM orders"),query("SELECT TO_CHAR(created_at AT TIME ZONE 'Asia/Beirut','YYYY-MM-DD') day,COUNT(*)::int orders,COALESCE(SUM(total),0) revenue FROM orders WHERE created_at>=NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY 1"),query(`SELECT x->>'name' name,COALESCE(SUM(CASE WHEN x->>'quantity' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (x->>'quantity')::numeric ELSE 0 END),0)::int quantity FROM orders o CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN o.items_json IS NULL OR btrim(o.items_json)='' OR left(btrim(o.items_json),1)<>'[' THEN '[]'::jsonb ELSE o.items_json::jsonb END) x WHERE o.created_at>=NOW()-INTERVAL '90 days' GROUP BY 1 ORDER BY quantity DESC LIMIT 10`)]);res.json({summary:{...a.rows[0],revenue:Number(a.rows[0].revenue),avg_order:Number(a.rows[0].avg_order)},byDay:d.rows.map(x=>({...x,orders:Number(x.orders),revenue:Number(x.revenue)})),bestsellers:b.rows.map(x=>({...x,quantity:Number(x.quantity)}))})}catch(e){console.error('Analytics error:',e);next(e)}});
+app.get('/api/admin/analytics',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,next)=>{
+  try {
+    // Keep the summary/day queries in SQL, but parse order snapshots in JavaScript.
+    // Older orders may contain malformed/legacy items_json, and casting those rows
+    // directly to jsonb can make the whole analytics endpoint return HTTP 500.
+    const [summaryQ, dayQ, itemsQ] = await Promise.all([
+      query("SELECT COUNT(*)::int orders,COALESCE(SUM(total),0) revenue,COUNT(*) FILTER(WHERE status='delivered')::int delivered,COUNT(*) FILTER(WHERE status='cancelled')::int cancelled,COALESCE(AVG(total),0) avg_order FROM orders"),
+      query("SELECT TO_CHAR(created_at AT TIME ZONE 'Asia/Beirut','YYYY-MM-DD') day,COUNT(*)::int orders,COALESCE(SUM(total),0) revenue FROM orders WHERE created_at>=NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY 1"),
+      query("SELECT items_json FROM orders WHERE created_at>=NOW()-INTERVAL '90 days'")
+    ]);
+
+    const bestMap = new Map();
+    for (const row of itemsQ.rows) {
+      if (row.items_json == null) continue;
+      let items;
+      try {
+        items = Array.isArray(row.items_json) ? row.items_json : JSON.parse(String(row.items_json));
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
+        const name = String(item.name || '').trim();
+        const quantity = Number(item.quantity);
+        if (!name || !Number.isFinite(quantity) || quantity <= 0) continue;
+        bestMap.set(name, (bestMap.get(name) || 0) + quantity);
+      }
+    }
+
+    const bestsellers = [...bestMap.entries()]
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,10)
+      .map(([name,quantity])=>({name,quantity:Number(quantity)}));
+
+    const summary=summaryQ.rows[0]||{};
+    res.json({
+      summary:{...summary,revenue:Number(summary.revenue||0),avg_order:Number(summary.avg_order||0),orders:Number(summary.orders||0),delivered:Number(summary.delivered||0),cancelled:Number(summary.cancelled||0)},
+      byDay:dayQ.rows.map(x=>({...x,orders:Number(x.orders||0),revenue:Number(x.revenue||0)})),
+      bestsellers
+    });
+  } catch(e) {
+    console.error('Analytics error:',e);
+    next(e);
+  }
+});
 app.get('/api/admin/orders/export.csv',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,next)=>{try{const q=await query('SELECT id,customer_name,customer_phone,address,total,status,created_at FROM orders ORDER BY id DESC LIMIT 5000'),esc=v=>`"${String(v??'').replace(/"/g,'""')}"`,csv='\ufeff'+['id,customer_name,customer_phone,address,total,status,created_at',...q.rows.map(r=>[r.id,r.customer_name,r.customer_phone,r.address,r.total,r.status,r.created_at.toISOString()].map(esc).join(','))].join('\n');res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="orders.csv"');res.send(csv)}catch(e){next(e)}});
 app.get('/api/admin/audit',auth,requireAdmin,async(req,res,next)=>{try{const q=await query('SELECT * FROM audit_logs ORDER BY id DESC LIMIT 200');res.json({logs:q.rows})}catch(e){next(e)}});
 app.get('/api/health', (req, res) => res.json({ ok: true }));
