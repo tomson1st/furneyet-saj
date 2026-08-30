@@ -3013,3 +3013,28 @@ nav a svg,
   .tracking-search-modal .tracking-box form { grid-template-columns: 1fr; }
   .tracking-search-modal .tracking-box .btn { width: 100%; }
 }
+.total-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+.total-values b {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.total-values small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+@media (max-width: 560px) {
+  .total {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .total-values {
+    max-width: 70%;
+  }
+}
