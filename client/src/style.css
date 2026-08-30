@@ -2014,3 +2014,27 @@ footer {
   .progress-spinner { animation: none; }
   .editor { animation: none; }
 }
+
+
+/* Image upload field for the admin item/offer editor. */
+.image-upload-field {
+  display: grid;
+  gap: 5px;
+  border: 1px dashed var(--secondary);
+  background: #fffaf3;
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.image-upload-field input[type="file"] {
+  border: 0;
+  padding: 5px 0;
+  background: transparent;
+  font-family: inherit;
+}
+.image-upload-field small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
