@@ -126,42 +126,122 @@ app.use(morgan('dev'));
 app.post('/api/admin/upload-image', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
   try {
     const { dataUrl, fileName = 'image' } = req.body || {};
-    if (!dataUrl || typeof dataUrl !== 'string') return res.status(400).json({ error: 'الصورة مطلوبة' });
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      return res.status(400).json({ error: 'الصورة مطلوبة.' });
+    }
 
     const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/);
-    if (!match) return res.status(400).json({ error: 'نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP أو GIF.' });
+    if (!match) {
+      return res.status(400).json({ error: 'نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP أو GIF.' });
+    }
 
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'furneyet-saj';
+    const supabaseUrl = String(process.env.SUPABASE_URL || '').trim().replace(/\/$/, '');
+    const serviceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+    const bucket = String(process.env.SUPABASE_STORAGE_BUCKET || 'furneyet-saj').trim();
+
     if (!supabaseUrl || !serviceKey) {
-      return res.status(500).json({ error: 'إعدادات Supabase Storage غير موجودة في Render.' });
+      console.error('[upload-image] Missing Supabase Storage environment variables.');
+      return res.status(500).json({
+        error: 'إعدادات رفع الصور غير مكتملة في Render. يجب إضافة SUPABASE_URL و SUPABASE_SERVICE_ROLE_KEY.'
+      });
     }
 
-    const ext = ({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'})[match[1]];
-    const safeBase = String(fileName).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 50) || 'image';
-    const objectPath = `items/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeBase}.${ext}`;
+    if (!/^https?:\/\//i.test(supabaseUrl)) {
+      return res.status(500).json({ error: 'قيمة SUPABASE_URL غير صحيحة في Render.' });
+    }
+
     const bytes = Buffer.from(match[2], 'base64');
-    if (bytes.length > 4 * 1024 * 1024) return res.status(400).json({ error: 'حجم الصورة يجب ألا يتجاوز 4MB.' });
-
-    const base = supabaseUrl.replace(/\/$/, '');
-    const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
-    // Create a public bucket once if it does not already exist.
-    const bucketCheck = await fetch(`${base}/storage/v1/bucket/${encodeURIComponent(bucket)}`, { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
-    if (!bucketCheck.ok) {
-      const create = await fetch(`${base}/storage/v1/bucket`, { method: 'POST', headers, body: JSON.stringify({ id: bucket, name: bucket, public: true }) });
-      if (!create.ok && create.status !== 409) throw new Error(await create.text());
+    if (bytes.length === 0) return res.status(400).json({ error: 'ملف الصورة فارغ أو تالف.' });
+    if (bytes.length > 4 * 1024 * 1024) {
+      return res.status(400).json({ error: 'حجم الصورة يجب ألا يتجاوز 4MB.' });
     }
 
-    const upload = await fetch(`${base}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`, {
-      method: 'POST',
-      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': match[1], 'x-upsert': 'false' },
-      body: bytes
-    });
-    if (!upload.ok) throw new Error(await upload.text());
+    const ext = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif'
+    }[match[1]];
 
-    res.json({ url: `${base}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath}` });
-  } catch (e) { next(e); }
+    const safeBase = String(fileName)
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 50) || 'image';
+
+    const objectPath = `items/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeBase}.${ext}`;
+    const authHeaders = {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`
+    };
+
+    // 1) Make sure the bucket exists. A 404 means it needs to be created.
+    const bucketCheck = await fetch(
+      `${supabaseUrl}/storage/v1/bucket/${encodeURIComponent(bucket)}`,
+      { headers: authHeaders }
+    );
+
+    if (!bucketCheck.ok) {
+      const checkText = await bucketCheck.text().catch(() => '');
+      console.log(`[upload-image] Bucket check: ${bucketCheck.status} ${checkText}`);
+
+      if (bucketCheck.status !== 404) {
+        return res.status(500).json({
+          error: `تعذر الوصول إلى Storage Bucket «${bucket}». تأكد من SUPABASE_SERVICE_ROLE_KEY.`,
+          details: checkText.slice(0, 300)
+        });
+      }
+
+      const create = await fetch(`${supabaseUrl}/storage/v1/bucket`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bucket, name: bucket, public: true })
+      });
+
+      if (!create.ok && create.status !== 409) {
+        const createText = await create.text().catch(() => '');
+        console.error(`[upload-image] Bucket creation failed: ${create.status} ${createText}`);
+        return res.status(500).json({
+          error: `تعذر إنشاء Storage Bucket «${bucket}». أنشئه يدوياً في Supabase Storage ثم أعد المحاولة.`,
+          details: createText.slice(0, 300)
+        });
+      }
+    }
+
+    // 2) Upload the binary image. Service-role credentials stay on the server.
+    const upload = await fetch(
+      `${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`,
+      {
+        method: 'POST',
+        headers: {
+          ...authHeaders,
+          'Content-Type': match[1],
+          'x-upsert': 'false',
+          'cache-control': '3600'
+        },
+        body: bytes
+      }
+    );
+
+    if (!upload.ok) {
+      const uploadText = await upload.text().catch(() => '');
+      console.error(`[upload-image] Upload failed: ${upload.status} ${uploadText}`);
+      return res.status(500).json({
+        error: 'فشل رفع الصورة إلى Supabase Storage.',
+        details: uploadText.slice(0, 500)
+      });
+    }
+
+    const url = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath}`;
+    console.log(`[upload-image] Success: ${objectPath}`);
+    return res.json({ url });
+  } catch (e) {
+    console.error('[upload-image] Unexpected error:', e);
+    return res.status(500).json({
+      error: 'حدث خطأ غير متوقع أثناء رفع الصورة.',
+      details: String(e?.message || e).slice(0, 500)
+    });
+  }
 });
 
 app.get('/api/store', async (req, res, next) => {
