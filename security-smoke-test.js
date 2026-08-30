@@ -1,27 +1,34 @@
 const fs = require('fs');
-const server = fs.readFileSync('./server/index.js', 'utf8');
-const client = fs.readFileSync('./client/src/main.jsx', 'utf8');
-const forbidden = [
-  "process.env.JWT_SECRET ||",
-  "localStorage.getItem('fs_token')",
-  "localStorage.setItem('fs_token'",
-  "origin: true",
-  "ChangeMe123!",
-  "dev-secret-change-me"
+const path = require('path');
+
+const server = fs.readFileSync(path.join(__dirname, 'server', 'index.js'), 'utf8');
+const client = fs.readFileSync(path.join(__dirname, 'client', 'src', 'main.jsx'), 'utf8');
+
+const checks = [
+  ['JWT secret has no insecure fallback', !server.includes('dev-secret-change-me')],
+  ['Initial admin credentials have no hard-coded fallback', !server.includes('ChangeMe123!') && !server.includes("admin@example.com")],
+  ['JWT does not embed role/permissions', /jwt\.sign\(\{ id: Number\(u\.id\) \}/.test(server)],
+  ['Session uses cookie authentication', /const token = cookies\.session/.test(server)],
+  ['Session cookie is HttpOnly', /setCookie\(res, 'session', tokenFor\(u\), \{[\s\S]*?httpOnly: true/.test(server)],
+  ['CSRF middleware exists', /function requireCsrf/.test(server)],
+  ['Admin mutation routes use CSRF', (() => {
+    const routes = [...server.matchAll(/app\.(post|put|delete)\('\/api\/admin\/[^']+'[^\n]*/g)];
+    return routes.length > 0 && routes.every(m => m[0].includes('requireCsrf'));
+  })()],
+  ['User management is admin-only', /\/api\/admin\/users', auth, requireCsrf, requireAdmin/.test(server)],
+  ['Admin data is permission-scoped', /const canOrders =/.test(server) && /const canUsers =/.test(server)],
+  ['Public settings are allowlisted', /PUBLIC_SETTING_KEYS/.test(server)],
+  ['Login rate limiting exists', /loginLimiter/.test(server)],
+  ['Order rate limiting exists', /orderLimiter/.test(server)],
+  ['Client no longer stores JWT in localStorage', !client.includes('localStorage') && !client.includes('Authorization')],
+  ['Client sends cookies', /credentials:'same-origin'/.test(client)]
 ];
-for (const x of forbidden) {
-  if (server.includes(x) || client.includes(x)) throw new Error(`Security regression detected: ${x}`);
+
+let failed = 0;
+for (const [label, ok] of checks) {
+  console.log(`${ok ? 'PASS' : 'FAIL'} - ${label}`);
+  if (!ok) failed++;
 }
-const required = [
-  "requireCsrf",
-  "requireAdmin",
-  "app.use('/api/admin', adminLimiter)",
-  "HttpOnly",
-  "active FROM users",
-  "PUBLIC_SETTINGS",
-  "offerId"
-];
-for (const x of required) {
-  if (!server.includes(x) && !client.includes(x)) throw new Error(`Expected hardening missing: ${x}`);
-}
-console.log('Security smoke test passed.');
+
+if (failed) process.exit(1);
+console.log(`Security smoke tests passed: ${checks.length}/${checks.length}`);

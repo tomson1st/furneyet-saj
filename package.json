@@ -6,7 +6,8 @@
     "server:dev": "nodemon server/index.js",
     "client:dev": "vite --config client/vite.config.js",
     "build": "vite build --config client/vite.config.js",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "security:test": "node security-smoke-test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

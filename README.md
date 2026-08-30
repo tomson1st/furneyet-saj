@@ -1,28 +1,40 @@
-# فرنية صاج — Production deployment
+# فرنية صاج — Secure Rebuild
 
-Full-stack Arabic RTL ordering website.
+هذه النسخة مبنية على النسخة المكتملة `furneyet-saj-v17-offers-cart-fixed` مع الحفاظ على واجهة الموقع والإدارة والوظائف الموجودة، وإضافة إصلاحات أمنية ووظيفية.
 
-## Stack
-- React + Vite frontend
-- Node.js + Express API
-- Supabase PostgreSQL
-- JWT + bcrypt authentication
-- Optional WhatsApp Cloud API notifications
+## أهم التغييرات
 
-## Local setup
-1. Copy `.env.example` to `.env`.
-2. Set `DATABASE_URL` to a PostgreSQL/Supabase connection string.
-3. Set a strong `JWT_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`.
-4. Run `npm install`.
-5. Run `npm run dev` for development.
-6. Run `npm run build && npm start` for production.
+- جلسة الإدارة عبر HttpOnly cookie بدلاً من localStorage.
+- JWT يحتوي على user id فقط، مع إعادة التحقق من المستخدم والصلاحيات من قاعدة البيانات.
+- CSRF protection لجميع عمليات الإدارة التي تغيّر البيانات.
+- Rate limiting للـAPI وتسجيل الدخول والطلبات.
+- حماية أمنية أساسية للمتصفح وHTTP headers.
+- تقييد CORS عند استخدام `FRONTEND_ORIGIN`.
+- `/api/admin/data` يعيد البيانات حسب صلاحيات المستخدم.
+- إدارة المستخدمين الحساسة Admin-only.
+- منع إنشاء Admin جديد من واجهة إدارة المستخدمين.
+- Allowlist لإعدادات الموقع العامة.
+- التحقق من توفر العروض عند إنشاء الطلب.
+- التحقق من صحة الكميات وبيانات العميل والإجمالي.
+- منع الطلبات التي تحتوي عناصر غير صالحة أو غير متاحة.
 
-The server seeds the initial settings, sample menu, offer, and first admin account when their tables are empty.
+## التشغيل
 
+```bash
+npm install
+npm run security:test
+npm run build
+npm start
+```
 
-## Home UI update
-- Redesigned Arabic RTL home page to match the supplied reference layout.
-- Reduced vertical whitespace and top gap.
-- Added logo/title/tagline grouping beside the hero image.
-- Added category cards and popular items section.
-- Uses Droid Arabic Kufi across the site.
+## متغيرات البيئة
+
+انسخ `.env.example` إلى `.env` ثم اضبط القيم الحقيقية.
+
+`JWT_SECRET` يجب أن يكون عشوائياً وطوله 32 حرفاً على الأقل.
+
+لا ترفع `.env` إلى GitHub.
+
+## ملاحظة
+
+النسخة تستخدم نفس الـstack والبنية الأصلية. Rate limiting الحالي داخل الذاكرة ومناسب لتشغيل instance واحد. إذا تم تشغيل عدة instances خلف load balancer، يفضل لاحقاً نقل limiter إلى Redis.

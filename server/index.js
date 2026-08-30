@@ -7,9 +7,11 @@ const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const PORT = Number(process.env.PORT || 4000);
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const JWT_SECRET = String(process.env.JWT_SECRET || '').trim();
+if (!JWT_SECRET || JWT_SECRET.length < 32) throw new Error('JWT_SECRET is required and must be at least 32 characters long');
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 
@@ -82,8 +84,9 @@ async function seed() {
 
   const users = (await query('SELECT COUNT(*)::int AS c FROM users')).rows[0].c;
   if (users === 0) {
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
+    const adminEmail = String(process.env.ADMIN_EMAIL || '').trim();
+    const adminPassword = String(process.env.ADMIN_PASSWORD || '');
+    if (!adminEmail || !adminPassword) throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD are required when creating the initial admin');
     await query(
       'INSERT INTO users(name,email,password_hash,role,permissions) VALUES($1,$2,$3,$4,$5)',
       ['المدير', adminEmail, bcrypt.hashSync(adminPassword, 12), 'admin', JSON.stringify(['MANAGE_ITEMS','RECEIVE_ORDERS','MANAGE_SETTINGS','MANAGE_USERS'])]
@@ -92,27 +95,109 @@ async function seed() {
   }
 }
 
-function publicSettings(s) { return { ...s, whatsappEnabled: s.whatsappEnabled === 'true' }; }
+const PUBLIC_SETTING_KEYS = new Set([
+  'siteName','tagline','logoUrl','phone','currency',
+  'primary','secondary','background','theme','whatsappEnabled'
+]);
+
+function publicSettings(s) {
+  const out = {};
+  for (const key of PUBLIC_SETTING_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(s, key)) out[key] = s[key];
+  }
+  out.whatsappEnabled = s.whatsappEnabled === 'true';
+  return out;
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || '';
+  return Object.fromEntries(
+    header.split(';').map(v => v.trim()).filter(Boolean).map(v => {
+      const i = v.indexOf('=');
+      return i === -1 ? [v, ''] : [v.slice(0, i), decodeURIComponent(v.slice(i + 1))];
+    })
+  );
+}
+
+function setCookie(res, name, value, options = {}) {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+  if (options.maxAge != null) parts.push(`Max-Age=${Math.floor(options.maxAge / 1000)}`);
+  parts.push(`Path=${options.path || '/'}`);
+  if (options.httpOnly) parts.push('HttpOnly');
+  if (options.secure) parts.push('Secure');
+  parts.push(`SameSite=${options.sameSite || 'Lax'}`);
+  res.append('Set-Cookie', parts.join('; '));
+}
+
+function clearCookie(res, name) {
+  setCookie(res, name, '', {
+    maxAge: 0,
+    httpOnly: name === 'session',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax'
+  });
+}
 
 function auth(req, res, next) {
-  const h = req.headers.authorization || '';
-  if (!h.startsWith('Bearer ')) return res.status(401).json({ error: 'غير مصرح' });
-  try { req.user = jwt.verify(h.slice(7), JWT_SECRET); next(); }
-  catch { return res.status(401).json({ error: 'انتهت الجلسة' }); }
+  const cookies = parseCookies(req);
+  const token = cookies.session;
+  if (!token) return res.status(401).json({ error: 'غير مصرح' });
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload?.id) return res.status(401).json({ error: 'جلسة غير صالحة' });
+
+    query('SELECT id,name,email,role,permissions,active FROM users WHERE id=$1', [payload.id])
+      .then(({ rows }) => {
+        const u = rows[0];
+        if (!u || !u.active) return res.status(401).json({ error: 'الحساب غير فعال' });
+
+        let permissions = [];
+        try { permissions = JSON.parse(u.permissions || '[]'); } catch {}
+        req.user = {
+          id: Number(u.id),
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          permissions: Array.isArray(permissions) ? permissions : []
+        };
+        next();
+      }).catch(next);
+  } catch {
+    return res.status(401).json({ error: 'انتهت الجلسة' });
+  }
+}
+
+function requireCsrf(req, res, next) {
+  const cookies = parseCookies(req);
+  const header = String(req.get('X-CSRF-Token') || '');
+  if (!cookies.csrf || !header || cookies.csrf.length !== header.length ||
+      !crypto.timingSafeEqual(Buffer.from(cookies.csrf), Buffer.from(header))) {
+    return res.status(403).json({ error: 'طلب غير صالح. أعد تحميل الصفحة وحاول مرة أخرى.' });
+  }
+  next();
 }
 
 function requirePerm(p) {
   return (req, res, next) => {
-    if (req.user.role === 'admin' || (req.user.permissions || []).includes(p)) return next();
+    if (req.user?.role === 'admin' || (req.user?.permissions || []).includes(p)) return next();
     return res.status(403).json({ error: 'لا تملك الصلاحية المطلوبة' });
   };
 }
 
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'هذه العملية متاحة للمدير فقط' });
+  next();
+}
+
 function tokenFor(u) {
-  return jwt.sign({ id: Number(u.id), name: u.name, email: u.email, role: u.role, permissions: JSON.parse(u.permissions || '[]') }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: Number(u.id) }, JWT_SECRET, { expiresIn: '2h' });
 }
 
 function safeWhatsAppRecipient(s) { return s?.whatsappRecipient || ''; }
+
+const ALLOWED_THEMES = new Set(['classic','ramadan','eid','summer','national']);
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 async function sendWhatsAppOrder(order) {
   const settings = await getSettings();
@@ -155,15 +240,68 @@ async function sendWhatsAppStatusUpdate(orderId, status) {
 }
 
 const app = express();
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '6mb' }));
-app.use(morgan('dev'));
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
+const configuredOrigin = String(process.env.FRONTEND_ORIGIN || '').trim();
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+app.use(cors(configuredOrigin ? { origin: configuredOrigin, credentials: true } : { origin: false }));
+app.use(express.json({ limit: '6mb', strict: true }));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+function memoryRateLimit({ windowMs, limit, message }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const key = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const current = hits.get(key);
+    if (!current || now - current.started >= windowMs) {
+      hits.set(key, { started: now, count: 1 });
+      return next();
+    }
+    current.count += 1;
+    if (current.count > limit) {
+      res.setHeader('Retry-After', Math.ceil((windowMs - (now - current.started)) / 1000));
+      return res.status(429).json({ error: message });
+    }
+    next();
+    if (hits.size > 10000) {
+      for (const [k, v] of hits) if (now - v.started >= windowMs) hits.delete(k);
+    }
+  };
+}
+
+const apiLimiter = memoryRateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  message: 'طلبات كثيرة. حاول مرة أخرى بعد قليل.'
+});
+const loginLimiter = memoryRateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  message: 'محاولات تسجيل دخول كثيرة. حاول لاحقاً.'
+});
+const orderLimiter = memoryRateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 20,
+  message: 'تم تجاوز الحد المسموح للطلبات. حاول لاحقاً.'
+});
+app.use('/api', apiLimiter);
 
 
 // Upload an item/offer image to Supabase Storage.
 // Images are sent as a data URL from the admin UI; the server keeps the
 // Supabase service-role key private and returns only the public image URL.
-app.post('/api/admin/upload-image', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
+app.post('/api/admin/upload-image', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
   try {
     const { dataUrl, fileName = 'image' } = req.body || {};
     if (!dataUrl || typeof dataUrl !== 'string') {
@@ -287,7 +425,7 @@ app.post('/api/admin/upload-image', auth, requirePerm('MANAGE_ITEMS'), async (re
 
 // Upload the site logo. This endpoint is separate from item uploads so a
 // settings-only employee can manage the logo without receiving item rights.
-app.post('/api/admin/upload-logo', auth, requirePerm('MANAGE_SETTINGS'), async (req, res) => {
+app.post('/api/admin/upload-logo', auth, requireCsrf, requirePerm('MANAGE_SETTINGS'), async (req, res) => {
   try {
     const { dataUrl, fileName = 'logo' } = req.body || {};
     if (!dataUrl || typeof dataUrl !== 'string') return res.status(400).json({ error: 'صورة الشعار مطلوبة.' });
@@ -355,11 +493,18 @@ app.get('/api/store', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/orders', async (req, res, next) => {
+app.post('/api/orders', orderLimiter, async (req, res, next) => {
   try {
-    const { customerName, customerPhone, address = '', notes = '', items = [] } = req.body || {};
-    if (!customerName || !customerPhone || !Array.isArray(items) || !items.length) {
+    const customerName = String(req.body?.customerName || '').trim();
+    const customerPhone = String(req.body?.customerPhone || '').trim();
+    const address = String(req.body?.address || '').trim();
+    const notes = String(req.body?.notes || '').trim();
+    const items = req.body?.items;
+    if (!customerName || !customerPhone || !Array.isArray(items) || !items.length || items.length > 50) {
       return res.status(400).json({ error: 'يرجى إدخال الاسم والهاتف واختيار صنف واحد على الأقل' });
+    }
+    if (customerName.length > 100 || customerPhone.length > 30 || address.length > 300 || notes.length > 500) {
+      return res.status(400).json({ error: 'بعض بيانات الطلب طويلة جداً' });
     }
 
     const itemIds = items.map(x => Number(x.itemId)).filter(n => Number.isInteger(n) && n > 0);
@@ -371,7 +516,7 @@ app.post('/api/orders', async (req, res, next) => {
       ? (await query(`SELECT * FROM items WHERE id IN (${itemIds.map((_, i) => `$${i + 1}`).join(',')}) AND available=true`, itemIds)).rows
       : [];
     const offerRows = offerIds.length
-      ? (await query(`SELECT * FROM offers WHERE id IN (${offerIds.map((_, i) => `$${i + 1}`).join(',')})`, offerIds)).rows
+      ? (await query(`SELECT * FROM offers WHERE id IN (${offerIds.map((_, i) => `$${i + 1}`).join(',')}) AND active=true`, offerIds)).rows
       : [];
 
     const itemMap = new Map(itemRows.map(r => [Number(r.id), r]));
@@ -380,7 +525,11 @@ app.post('/api/orders', async (req, res, next) => {
     let total = 0;
 
     for (const x of items) {
-      const qty = Math.max(1, Math.min(99, Number(x.quantity) || 1));
+      const rawQty = Number(x?.quantity);
+      if (!Number.isInteger(rawQty) || rawQty < 1 || rawQty > 99) {
+        return res.status(400).json({ error: 'كمية غير صالحة في الطلب' });
+      }
+      const qty = rawQty;
       const numericItemId = Number(x.itemId);
       const offerId = Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN));
 
@@ -400,8 +549,11 @@ app.post('/api/orders', async (req, res, next) => {
       }
     }
 
-    if (!normalized.length) {
-      return res.status(400).json({ error: 'الأصناف أو العروض المختارة غير متاحة حالياً' });
+    if (!normalized.length || normalized.length !== items.length) {
+      return res.status(400).json({ error: 'بعض الأصناف أو العروض المختارة غير متاحة حالياً' });
+    }
+    if (!Number.isFinite(total) || total < 0 || total > 1e12) {
+      return res.status(400).json({ error: 'قيمة الطلب غير صالحة' });
     }
 
     const result = await query(
@@ -443,18 +595,35 @@ app.get('/api/orders/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/auth/login', async (req, res, next) => {
+app.post('/api/auth/login', loginLimiter, async (req, res, next) => {
   try {
-    const { email, password } = req.body || {};
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (!email || !password || email.length > 254 || password.length > 200) {
+      return res.status(400).json({ error: 'بيانات تسجيل الدخول غير صالحة' });
+    }
     const { rows } = await query('SELECT * FROM users WHERE email=$1 AND active=true', [email]);
     const u = rows[0];
-    if (!u || !bcrypt.compareSync(password, u.password_hash)) return res.status(401).json({ error: 'البريد أو كلمة المرور غير صحيحة' });
-    res.json({ token: tokenFor(u) });
+    if (!u || !bcrypt.compareSync(password, u.password_hash)) {
+      return res.status(401).json({ error: 'البريد أو كلمة المرور غير صحيحة' });
+    }
+    const csrf = crypto.randomBytes(32).toString('hex');
+    setCookie(res, 'session', tokenFor(u), {
+      httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Lax', maxAge: 2 * 60 * 60 * 1000
+    });
+    setCookie(res, 'csrf', csrf, {
+      httpOnly: false, secure: process.env.NODE_ENV === 'production', sameSite: 'Lax', maxAge: 2 * 60 * 60 * 1000
+    });
+    res.json({ ok: true });
   } catch (e) { next(e); }
 });
+app.post('/api/auth/logout', auth, requireCsrf, (req, res) => {
+  clearCookie(res, 'session');
+  clearCookie(res, 'csrf');
+  res.json({ ok: true });
+});
 app.get('/api/auth/me', auth, (req, res) => res.json({ user: req.user }));
-
-app.post('/api/admin/whatsapp/test', auth, requirePerm('MANAGE_SETTINGS'), async (req, res, next) => {
+app.post('/api/admin/whatsapp/test', auth, requireCsrf, requirePerm('MANAGE_SETTINGS'), async (req, res, next) => {
   try {
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -477,14 +646,21 @@ app.post('/api/admin/whatsapp/test', auth, requirePerm('MANAGE_SETTINGS'), async
 
 app.get('/api/admin/data', auth, async (req, res, next) => {
   try {
+    const isAdmin = req.user.role === 'admin';
+    const canOrders = isAdmin || req.user.permissions.includes('RECEIVE_ORDERS');
+    const canItems = isAdmin || req.user.permissions.includes('MANAGE_ITEMS');
+    const canSettings = isAdmin || req.user.permissions.includes('MANAGE_SETTINGS');
+    const canUsers = isAdmin || req.user.permissions.includes('MANAGE_USERS');
+
     const [categories, items, offers, orders, users, settings] = await Promise.all([
-      query('SELECT * FROM categories ORDER BY sort_order,id'),
-      query('SELECT * FROM items ORDER BY sort_order,id'),
-      query('SELECT * FROM offers ORDER BY sort_order,id'),
-      query('SELECT * FROM orders ORDER BY id DESC LIMIT 100'),
-      query('SELECT id,name,email,role,permissions,active,created_at FROM users ORDER BY id'),
-      getSettings()
+      canItems ? query('SELECT * FROM categories ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
+      canItems ? query('SELECT * FROM items ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
+      canItems ? query('SELECT * FROM offers ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
+      canOrders ? query('SELECT * FROM orders ORDER BY id DESC LIMIT 100') : Promise.resolve({ rows: [] }),
+      canUsers ? query('SELECT id,name,email,role,permissions,active,created_at FROM users ORDER BY id') : Promise.resolve({ rows: [] }),
+      canSettings ? getSettings() : getSettings().then(publicSettings)
     ]);
+
     res.json({
       categories: categories.rows,
       items: items.rows.map(x => ({ ...x, available: !!x.available, featured: !!x.featured })),
@@ -495,27 +671,55 @@ app.get('/api/admin/data', auth, async (req, res, next) => {
     });
   } catch (e) { next(e); }
 });
-
-app.post('/api/admin/categories', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
+app.post('/api/admin/categories', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
   try { const { name } = req.body; if (!name) return res.status(400).json({ error: 'الاسم مطلوب' }); const r = await query('INSERT INTO categories(name) VALUES($1) RETURNING id', [name]); res.json({ id: Number(r.rows[0].id) }); } catch (e) { next(e); }
 });
-app.put('/api/admin/categories/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('UPDATE categories SET name=$1 WHERE id=$2', [req.body.name, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
-app.delete('/api/admin/categories/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM categories WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
+app.put('/api/admin/categories/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('UPDATE categories SET name=$1 WHERE id=$2', [req.body.name, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
+app.delete('/api/admin/categories/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM categories WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
 
-app.post('/api/admin/items', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
+app.post('/api/admin/items', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
   try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0 } = req.body; if (!name || price === undefined) return res.status(400).json({ error: 'الاسم والسعر مطلوبان' }); const r = await query('INSERT INTO items(category_id,name,description,price,image,available,featured,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0]); res.json({ id: Number(r.rows[0].id) }); } catch (e) { next(e); }
 });
-app.put('/api/admin/items/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
+app.put('/api/admin/items/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
   try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0 } = req.body; await query('UPDATE items SET category_id=$1,name=$2,description=$3,price=$4,image=$5,available=$6,featured=$7,sort_order=$8 WHERE id=$9', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); }
 });
-app.delete('/api/admin/items/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM items WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
+app.delete('/api/admin/items/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM items WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
 
-app.post('/api/admin/offers', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { const { title, description = '', price, image = '', active = true, sort_order = 0 } = req.body; if (!title || price === undefined) return res.status(400).json({ error: 'العنوان والسعر مطلوبان' }); const r = await query('INSERT INTO offers(title,description,price,image,active,sort_order) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', [title, description, Number(price), image, !!active, Number(sort_order) || 0]); res.json({ id: Number(r.rows[0].id) }); } catch (e) { next(e); } });
-app.put('/api/admin/offers/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { const { title, description = '', price, image = '', active = true, sort_order = 0 } = req.body; await query('UPDATE offers SET title=$1,description=$2,price=$3,image=$4,active=$5,sort_order=$6 WHERE id=$7', [title, description, Number(price), image, !!active, Number(sort_order) || 0, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
-app.delete('/api/admin/offers/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM offers WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
+app.post('/api/admin/offers', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { const { title, description = '', price, image = '', active = true, sort_order = 0 } = req.body; if (!title || price === undefined) return res.status(400).json({ error: 'العنوان والسعر مطلوبان' }); const r = await query('INSERT INTO offers(title,description,price,image,active,sort_order) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', [title, description, Number(price), image, !!active, Number(sort_order) || 0]); res.json({ id: Number(r.rows[0].id) }); } catch (e) { next(e); } });
+app.put('/api/admin/offers/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { const { title, description = '', price, image = '', active = true, sort_order = 0 } = req.body; await query('UPDATE offers SET title=$1,description=$2,price=$3,image=$4,active=$5,sort_order=$6 WHERE id=$7', [title, description, Number(price), image, !!active, Number(sort_order) || 0, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
+app.delete('/api/admin/offers/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM offers WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
 
-app.put('/api/admin/settings', auth, requirePerm('MANAGE_SETTINGS'), async (req, res, next) => { try { for (const [k, v] of Object.entries(req.body || {})) await query('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', [k, String(v)]); res.json({ settings: await getSettings() }); } catch (e) { next(e); } });
-app.put('/api/admin/orders/:id', auth, requirePerm('RECEIVE_ORDERS'), async (req, res, next) => {
+app.put('/api/admin/settings', auth, requireCsrf, requirePerm('MANAGE_SETTINGS'), async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const invalid = Object.keys(body).find(k => !PUBLIC_SETTING_KEYS.has(k));
+    if (invalid) return res.status(400).json({ error: `إعداد غير مسموح: ${invalid}` });
+
+    const limits = {
+      siteName: 100, tagline: 200, logoUrl: 2000, phone: 40, currency: 20,
+      primary: 20, secondary: 20, background: 20, theme: 30, whatsappEnabled: 10
+    };
+    for (const [k, v] of Object.entries(body)) {
+      const value = String(v ?? '').trim();
+      if (value.length > limits[k]) return res.status(400).json({ error: `قيمة الإعداد «${k}» طويلة جداً` });
+      if (['primary','secondary','background'].includes(k) && !HEX_COLOR.test(value)) {
+        return res.status(400).json({ error: `لون غير صالح للإعداد «${k}»` });
+      }
+      if (k === 'theme' && !ALLOWED_THEMES.has(value)) {
+        return res.status(400).json({ error: 'الثيم غير صالح' });
+      }
+      if (k === 'whatsappEnabled' && !['true','false'].includes(value)) {
+        return res.status(400).json({ error: 'قيمة WhatsApp غير صالحة' });
+      }
+      await query(
+        'INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value',
+        [k, value]
+      );
+    }
+    res.json({ settings: await getSettings() });
+  } catch (e) { next(e); }
+});
+app.put('/api/admin/orders/:id', auth, requireCsrf, requirePerm('RECEIVE_ORDERS'), async (req, res, next) => {
   try {
     const allowed = ['new','confirmed','preparing','ready','delivered','cancelled'];
     const nextStatus = req.body.status;
@@ -547,17 +751,80 @@ app.get('/api/admin/orders/:id/history', auth, requirePerm('RECEIVE_ORDERS'), as
   } catch (e) { next(e); }
 });
 
-app.post('/api/admin/users', auth, requirePerm('MANAGE_USERS'), async (req, res, next) => {
-  try { const { name, email, password, role = 'staff', permissions = [] } = req.body; if (!name || !email || !password) return res.status(400).json({ error: 'الاسم والبريد وكلمة المرور مطلوبة' }); const r = await query('INSERT INTO users(name,email,password_hash,role,permissions) VALUES($1,$2,$3,$4,$5) RETURNING id', [name, email, bcrypt.hashSync(password, 12), role, JSON.stringify(permissions)]); res.json({ id: Number(r.rows[0].id) }); }
-  catch (e) { if (e.code === '23505') return res.status(400).json({ error: 'البريد مستخدم مسبقاً' }); next(e); }
-});
-app.put('/api/admin/users/:id', auth, requirePerm('MANAGE_USERS'), async (req, res, next) => {
-  try { const { name, email, password, role, permissions, active } = req.body; const found = await query('SELECT * FROM users WHERE id=$1', [req.params.id]); const u = found.rows[0]; if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' }); const hash = password ? bcrypt.hashSync(password, 12) : u.password_hash; await query('UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,permissions=$5,active=$6 WHERE id=$7', [name, email, hash, role, JSON.stringify(permissions || []), !!active, req.params.id]); res.json({ ok: true }); }
-  catch (e) { if (e.code === '23505') return res.status(400).json({ error: 'البريد مستخدم مسبقاً' }); next(e); }
-});
-app.delete('/api/admin/users/:id', auth, requirePerm('MANAGE_USERS'), async (req, res, next) => { try { if (Number(req.params.id) === Number(req.user.id)) return res.status(400).json({ error: 'لا يمكنك حذف حسابك الحالي' }); await query('DELETE FROM users WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
+app.post('/api/admin/users', auth, requireCsrf, requireAdmin, requirePerm('MANAGE_USERS'), async (req, res, next) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const role = String(req.body?.role || 'staff');
+    const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+    const allowedPermissions = new Set(['MANAGE_ITEMS','RECEIVE_ORDERS','MANAGE_SETTINGS','MANAGE_USERS']);
 
-app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+    if (!name || name.length > 100 || !email || email.length > 254 || !password || password.length < 10 || password.length > 200) {
+      return res.status(400).json({ error: 'بيانات المستخدم غير صالحة. كلمة المرور يجب أن تكون 10 أحرف على الأقل.' });
+    }
+    if (!['staff','admin'].includes(role) || permissions.some(p => !allowedPermissions.has(p))) {
+      return res.status(400).json({ error: 'الدور أو الصلاحيات غير صالحة' });
+    }
+    if (role === 'admin') {
+      return res.status(400).json({ error: 'إنشاء حساب مدير جديد غير مسموح عبر هذه الواجهة' });
+    }
+
+    const r = await query(
+      'INSERT INTO users(name,email,password_hash,role,permissions) VALUES($1,$2,$3,$4,$5) RETURNING id',
+      [name, email, bcrypt.hashSync(password, 12), 'staff', JSON.stringify(permissions)]
+    );
+    res.json({ id: Number(r.rows[0].id) });
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'البريد مستخدم مسبقاً' });
+    next(e);
+  }
+});
+
+app.put('/api/admin/users/:id', auth, requireCsrf, requireAdmin, requirePerm('MANAGE_USERS'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const found = await query('SELECT * FROM users WHERE id=$1', [id]);
+    const u = found.rows[0];
+    if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
+
+    const name = String(req.body?.name ?? u.name).trim();
+    const email = String(req.body?.email ?? u.email).trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const role = String(req.body?.role ?? u.role);
+    const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+    const active = req.body?.active !== false;
+    const allowedPermissions = new Set(['MANAGE_ITEMS','RECEIVE_ORDERS','MANAGE_SETTINGS','MANAGE_USERS']);
+
+    if (!name || name.length > 100 || !email || email.length > 254 ||
+        !['staff','admin'].includes(role) || permissions.some(p => !allowedPermissions.has(p))) {
+      return res.status(400).json({ error: 'بيانات المستخدم غير صالحة' });
+    }
+    if (id === Number(req.user.id) && (!active || role !== 'admin')) {
+      return res.status(400).json({ error: 'لا يمكنك تعطيل حساب المدير الحالي أو خفض صلاحياته' });
+    }
+
+    const hash = password ? bcrypt.hashSync(password, 12) : u.password_hash;
+    await query(
+      'UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,permissions=$5,active=$6 WHERE id=$7',
+      [name, email, hash, role, JSON.stringify(permissions), !!active, id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'البريد مستخدم مسبقاً' });
+    next(e);
+  }
+});
+
+app.delete('/api/admin/users/:id', auth, requireCsrf, requireAdmin, requirePerm('MANAGE_USERS'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (id === Number(req.user.id)) return res.status(400).json({ error: 'لا يمكنك حذف حسابك الحالي' });
+    await query('DELETE FROM users WHERE id=$1', [id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(clientDist)) {
