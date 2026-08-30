@@ -42,6 +42,21 @@ async function getSettings() {
   return Object.fromEntries(rows.map(x => [x.key, x.value]));
 }
 
+async function ensureOrderHistoryTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS order_status_history (
+      id BIGSERIAL PRIMARY KEY,
+      order_id BIGINT NOT NULL,
+      old_status VARCHAR(30),
+      new_status VARCHAR(30) NOT NULL,
+      changed_by BIGINT,
+      changed_by_name VARCHAR(160),
+      changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query('CREATE INDEX IF NOT EXISTS idx_order_status_history_order ON order_status_history(order_id, changed_at DESC)');
+}
+
 async function seed() {
   for (const [k, v] of Object.entries(settingDefaults)) {
     await query('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING', [k, String(v)]);
@@ -338,6 +353,10 @@ app.post('/api/orders', async (req, res, next) => {
       [customerName, customerPhone, address, notes, JSON.stringify(normalized), total]
     );
     const id = Number(result.rows[0].id);
+    await query(
+      'INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',
+      [id, null, 'new', null, 'الزبون']
+    );
     let whatsappSent = false;
     try {
       whatsappSent = await sendWhatsAppOrder({ id, customerName, customerPhone, address, notes, items: normalized, total });
@@ -413,7 +432,34 @@ app.put('/api/admin/offers/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, 
 app.delete('/api/admin/offers/:id', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM offers WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
 
 app.put('/api/admin/settings', auth, requirePerm('MANAGE_SETTINGS'), async (req, res, next) => { try { for (const [k, v] of Object.entries(req.body || {})) await query('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value', [k, String(v)]); res.json({ settings: await getSettings() }); } catch (e) { next(e); } });
-app.put('/api/admin/orders/:id', auth, requirePerm('RECEIVE_ORDERS'), async (req, res, next) => { try { const allowed = ['new','confirmed','preparing','ready','delivered','cancelled']; if (!allowed.includes(req.body.status)) return res.status(400).json({ error: 'حالة غير صالحة' }); await query('UPDATE orders SET status=$1 WHERE id=$2', [req.body.status, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
+app.put('/api/admin/orders/:id', auth, requirePerm('RECEIVE_ORDERS'), async (req, res, next) => {
+  try {
+    const allowed = ['new','confirmed','preparing','ready','delivered','cancelled'];
+    const nextStatus = req.body.status;
+    if (!allowed.includes(nextStatus)) return res.status(400).json({ error: 'حالة غير صالحة' });
+    const found = await query('SELECT id,status FROM orders WHERE id=$1', [req.params.id]);
+    const order = found.rows[0];
+    if (!order) return res.status(404).json({ error: 'الطلب غير موجود' });
+    const previousStatus = order.status || 'new';
+    if (previousStatus === nextStatus) return res.json({ ok: true, unchanged: true });
+    await query('UPDATE orders SET status=$1 WHERE id=$2', [nextStatus, req.params.id]);
+    await query(
+      'INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',
+      [req.params.id, previousStatus, nextStatus, req.user.id, req.user.name || req.user.email || 'الإدارة']
+    );
+    res.json({ ok: true, previousStatus, status: nextStatus });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/admin/orders/:id/history', auth, requirePerm('RECEIVE_ORDERS'), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      'SELECT id,old_status,new_status,changed_by,changed_by_name,changed_at FROM order_status_history WHERE order_id=$1 ORDER BY changed_at DESC,id DESC',
+      [req.params.id]
+    );
+    res.json({ history: rows.map(x => ({ ...x, id: Number(x.id), order_id: Number(req.params.id), changed_by: x.changed_by == null ? null : Number(x.changed_by) })) });
+  } catch (e) { next(e); }
+});
 
 app.post('/api/admin/users', auth, requirePerm('MANAGE_USERS'), async (req, res, next) => {
   try { const { name, email, password, role = 'staff', permissions = [] } = req.body; if (!name || !email || !password) return res.status(400).json({ error: 'الاسم والبريد وكلمة المرور مطلوبة' }); const r = await query('INSERT INTO users(name,email,password_hash,role,permissions) VALUES($1,$2,$3,$4,$5) RETURNING id', [name, email, bcrypt.hashSync(password, 12), role, JSON.stringify(permissions)]); res.json({ id: Number(r.rows[0].id) }); }
@@ -435,4 +481,4 @@ if (fs.existsSync(clientDist)) {
 
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'حدث خطأ في الخادم' }); });
 
-seed().then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`))).catch(err => { console.error('Startup failed:', err); process.exit(1); });
+ensureOrderHistoryTable().then(() => seed()).then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`))).catch(err => { console.error('Startup failed:', err); process.exit(1); });
