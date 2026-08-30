@@ -145,7 +145,7 @@ async function seed() {
 
 const PUBLIC_SETTING_KEYS = new Set([
   'siteName','tagline','logoUrl','phone','currency',
-  'primary','secondary','background','theme','whatsappEnabled'
+  'primary','secondary','background','theme','whatsappEnabled','whatsappRecipient'
 ]);
 
 function publicSettings(s) {
@@ -745,7 +745,7 @@ app.put('/api/admin/settings', auth, requireCsrf, requirePerm('MANAGE_SETTINGS')
 
     const limits = {
       siteName: 100, tagline: 200, logoUrl: 2000, phone: 40, currency: 20,
-      primary: 20, secondary: 20, background: 20, theme: 30, whatsappEnabled: 10
+      primary: 20, secondary: 20, background: 20, theme: 30, whatsappEnabled: 10, whatsappRecipient: 40
     };
     for (const [k, v] of Object.entries(body)) {
       const value = String(v ?? '').trim();
@@ -758,6 +758,9 @@ app.put('/api/admin/settings', auth, requireCsrf, requirePerm('MANAGE_SETTINGS')
       }
       if (k === 'whatsappEnabled' && !['true','false'].includes(value)) {
         return res.status(400).json({ error: 'قيمة WhatsApp غير صالحة' });
+      }
+      if (k === 'whatsappRecipient' && value && !/^[0-9+()\-\s]{7,40}$/.test(value)) {
+        return res.status(400).json({ error: 'رقم WhatsApp غير صالح' });
       }
       await query(
         'INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value',

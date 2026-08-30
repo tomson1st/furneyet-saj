@@ -17,12 +17,13 @@ const checks = [
   })()],
   ['User management is admin-only', /\/api\/admin\/users', auth, requireCsrf, requireAdmin/.test(server)],
   ['Admin data is permission-scoped', /const canOrders =/.test(server) && /const canUsers =/.test(server)],
-  ['Public settings are allowlisted', /PUBLIC_SETTING_KEYS/.test(server)],
+  ['Public settings are allowlisted', /PUBLIC_SETTING_KEYS/.test(server) && /whatsappRecipient/.test(server)],
   ['Legacy snake_case settings are normalized', /site_name: 'siteName'/.test(server) && /migrateLegacySettings/.test(server)],
   ['Login rate limiting exists', /loginLimiter/.test(server)],
   ['Order rate limiting exists', /orderLimiter/.test(server)],
   ['Client no longer stores JWT in localStorage', !client.includes('localStorage') && !client.includes('Authorization')],
-  ['Client sends cookies', /credentials:'same-origin'/.test(client)]
+  ['Client sends cookies', /credentials:'same-origin'/.test(client)],
+  ['No dead Droid Arabic Kufi remote font URLs', !client.includes('fonts.gstatic.com') && !fs.readFileSync(path.join(__dirname, 'client', 'src', 'style.css'), 'utf8').includes('fonts.gstatic.com')]
 ];
 
 let failed = 0;
