@@ -3362,3 +3362,5 @@ nav a svg,
   .admin-product-card .admin-card-image,
   .admin-product-card .admin-image-placeholder{min-height:250px}
 }
+
+.user-form-error{margin:0 0 12px;padding:10px 12px;border:1px solid rgba(180,35,24,.25);border-radius:10px;background:rgba(180,35,24,.08);color:#b42318;font-size:.9rem;line-height:1.7;}
