@@ -107,6 +107,26 @@ async function ensureOrderHistoryTable() {
   await query('CREATE INDEX IF NOT EXISTS idx_order_status_history_order ON order_status_history(order_id, changed_at DESC)');
 }
 
+async function ensurePhase2Schema(){
+await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS allergens TEXT NOT NULL DEFAULT ''`);await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS options_json TEXT NOT NULL DEFAULT '[]'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_user_id BIGINT`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(14,2) NOT NULL DEFAULT 0`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(60)`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_ready_at TIMESTAMPTZ`);
+await query(`CREATE TABLE IF NOT EXISTS customer_users(id BIGSERIAL PRIMARY KEY,name VARCHAR(100) NOT NULL,phone VARCHAR(30) NOT NULL UNIQUE,email VARCHAR(254) UNIQUE,password_hash TEXT NOT NULL,active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+await query(`CREATE TABLE IF NOT EXISTS customer_addresses(id BIGSERIAL PRIMARY KEY,customer_user_id BIGINT NOT NULL REFERENCES customer_users(id) ON DELETE CASCADE,label VARCHAR(60) NOT NULL,address VARCHAR(300) NOT NULL,is_default BOOLEAN NOT NULL DEFAULT FALSE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+await query(`CREATE TABLE IF NOT EXISTS favorites(customer_user_id BIGINT NOT NULL REFERENCES customer_users(id) ON DELETE CASCADE,item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(customer_user_id,item_id))`);
+await query(`CREATE TABLE IF NOT EXISTS order_reviews(id BIGSERIAL PRIMARY KEY,order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,customer_user_id BIGINT,rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),comment VARCHAR(500) NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(order_id))`);
+await query(`CREATE TABLE IF NOT EXISTS delivery_zones(id BIGSERIAL PRIMARY KEY,name VARCHAR(100) NOT NULL,fee NUMERIC(14,2) NOT NULL DEFAULT 0,min_order NUMERIC(14,2) NOT NULL DEFAULT 0,active BOOLEAN NOT NULL DEFAULT TRUE,sort_order INTEGER NOT NULL DEFAULT 0)`);
+await query(`CREATE TABLE IF NOT EXISTS coupons(id BIGSERIAL PRIMARY KEY,code VARCHAR(60) NOT NULL UNIQUE,type VARCHAR(20) NOT NULL DEFAULT 'fixed',value NUMERIC(14,2) NOT NULL DEFAULT 0,min_order NUMERIC(14,2) NOT NULL DEFAULT 0,max_uses INTEGER,used_count INTEGER NOT NULL DEFAULT 0,active BOOLEAN NOT NULL DEFAULT TRUE,starts_at TIMESTAMPTZ,ends_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+await query(`CREATE TABLE IF NOT EXISTS coupon_redemptions(coupon_id BIGINT NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,customer_user_id BIGINT,order_id BIGINT REFERENCES orders(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(coupon_id,order_id))`);
+await query(`CREATE TABLE IF NOT EXISTS loyalty_accounts(customer_user_id BIGINT PRIMARY KEY REFERENCES customer_users(id) ON DELETE CASCADE,points INTEGER NOT NULL DEFAULT 0,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+await query(`CREATE TABLE IF NOT EXISTS loyalty_transactions(id BIGSERIAL PRIMARY KEY,customer_user_id BIGINT NOT NULL REFERENCES customer_users(id) ON DELETE CASCADE,points INTEGER NOT NULL,reason VARCHAR(200) NOT NULL,order_id BIGINT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+await query(`CREATE TABLE IF NOT EXISTS notifications(id BIGSERIAL PRIMARY KEY,customer_user_id BIGINT,order_id BIGINT,channel VARCHAR(20) NOT NULL,title VARCHAR(160) NOT NULL,body VARCHAR(1000) NOT NULL,sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),status VARCHAR(20) NOT NULL DEFAULT 'sent')`);
+await query(`CREATE TABLE IF NOT EXISTS audit_logs(id BIGSERIAL PRIMARY KEY,user_id BIGINT,action VARCHAR(120) NOT NULL,entity_type VARCHAR(60),entity_id BIGINT,details TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+await query(`CREATE TABLE IF NOT EXISTS employee_schedules(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,weekday INTEGER NOT NULL CHECK(weekday BETWEEN 0 AND 6),start_time TIME,end_time TIME,active BOOLEAN NOT NULL DEFAULT TRUE,UNIQUE(user_id,weekday))`);
+await query('CREATE INDEX IF NOT EXISTS idx_orders_customer_user ON orders(customer_user_id)');await query('CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)');
+}
+function customerAuth(req,res,next){const t=parseCookies(req).customer_session;if(!t)return res.status(401).json({error:'يجب تسجيل الدخول'});try{const p=jwt.verify(t,JWT_SECRET);query('SELECT id,name,phone,email,active FROM customer_users WHERE id=$1',[p.id]).then(({rows})=>{const u=rows[0];if(!u||!u.active)return res.status(401).json({error:'الحساب غير فعال'});req.customer={id:Number(u.id),name:u.name,phone:u.phone,email:u.email};next()}).catch(next)}catch{return res.status(401).json({error:'انتهت الجلسة'})}}
+function customerTokenFor(u){return jwt.sign({id:Number(u.id),type:'customer'},JWT_SECRET,{expiresIn:'30d'})}
+function requireCustomerCsrf(req,res,next){const cookies=parseCookies(req);const token=cookies.customer_csrf;const header=String(req.get('X-CSRF-Token')||'');if(!token||!header||token.length!==header.length||!crypto.timingSafeEqual(Buffer.from(token),Buffer.from(header)))return res.status(403).json({error:'طلب غير صالح'});next()}
+function audit(req,a,t='',id=null,d=''){return query('INSERT INTO audit_logs(user_id,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5)',[req.user?.id||null,a,t,id,d]).catch(()=>{})}
 async function seed() {
   await migrateLegacySettings();
   for (const [k, v] of Object.entries(settingDefaults)) {
@@ -244,7 +264,7 @@ function tokenFor(u) {
 
 function safeWhatsAppRecipient(s) { return s?.whatsappRecipient || ''; }
 
-const ALLOWED_THEMES = new Set(['classic','ramadan','eid','summer','national']);
+const ALLOWED_THEMES = new Set(['classic','ramadan','eid','summer','national','custom']);
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 async function sendWhatsAppOrder(order) {
@@ -346,6 +366,18 @@ const orderLimiter = memoryRateLimit({
 app.use('/api', apiLimiter);
 
 
+app.post('/api/customer/register',orderLimiter,async(req,res,next)=>{try{const name=String(req.body?.name||'').trim(),phone=String(req.body?.phone||'').trim(),email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');if(!name||!phone||password.length<8)return res.status(400).json({error:'يرجى إدخال الاسم والهاتف وكلمة مرور من 8 أحرف على الأقل'});const r=await query('INSERT INTO customer_users(name,phone,email,password_hash) VALUES($1,$2,$3,$4) RETURNING id,name,phone,email',[name,phone,email||null,bcrypt.hashSync(password,12)]),u=r.rows[0];await query('INSERT INTO loyalty_accounts(customer_user_id) VALUES($1) ON CONFLICT DO NOTHING',[u.id]);setCookie(res,'customer_session',customerTokenFor(u),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});const c=crypto.randomBytes(32).toString('hex');setCookie(res,'customer_csrf',c,{secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});res.status(201).json({user:{id:Number(u.id),name:u.name,phone:u.phone,email:u.email}})}catch(e){if(e.code==='23505')return res.status(400).json({error:'رقم الهاتف أو البريد مستخدم مسبقاً'});next(e)}});
+app.post('/api/customer/login',loginLimiter,async(req,res,next)=>{try{const id=String(req.body?.identifier||'').trim(),pw=String(req.body?.password||''),q=await query('SELECT * FROM customer_users WHERE (phone=$1 OR LOWER(email)=LOWER($1)) AND active=true',[id]),u=q.rows[0];if(!u||!bcrypt.compareSync(pw,u.password_hash))return res.status(401).json({error:'بيانات الدخول غير صحيحة'});setCookie(res,'customer_session',customerTokenFor(u),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});const c=crypto.randomBytes(32).toString('hex');setCookie(res,'customer_csrf',c,{secure:process.env.NODE_ENV==='production',sameSite:'Lax',maxAge:2592000000});res.json({user:{id:Number(u.id),name:u.name,phone:u.phone,email:u.email}})}catch(e){next(e)}});
+app.get('/api/customer/me',customerAuth,async(req,res,next)=>{try{const [a,f,l]=await Promise.all([query('SELECT id,label,address,is_default FROM customer_addresses WHERE customer_user_id=$1 ORDER BY is_default DESC,id',[req.customer.id]),query('SELECT item_id FROM favorites WHERE customer_user_id=$1',[req.customer.id]),query('SELECT points FROM loyalty_accounts WHERE customer_user_id=$1',[req.customer.id])]);res.json({user:req.customer,addresses:a.rows,favorites:f.rows.map(x=>Number(x.item_id)),points:Number(l.rows[0]?.points||0)})}catch(e){next(e)}});
+app.post('/api/customer/logout',customerAuth,requireCustomerCsrf,(req,res)=>{clearCookie(res,'customer_session');clearCookie(res,'customer_csrf');res.json({ok:true})});
+app.post('/api/customer/addresses',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const label=String(req.body?.label||'').trim(),address=String(req.body?.address||'').trim();if(!label||!address||address.length>300)return res.status(400).json({error:'بيانات العنوان غير صالحة'});const existing=await query('SELECT COUNT(*)::int AS count FROM customer_addresses WHERE customer_user_id=$1',[req.customer.id]);const makeDefault=!!req.body?.is_default || Number(existing.rows[0].count)===0;const r=await query('INSERT INTO customer_addresses(customer_user_id,label,address,is_default) VALUES($1,$2,$3,$4) RETURNING id,label,address,is_default',[req.customer.id,label,address,makeDefault]);if(makeDefault)await query('UPDATE customer_addresses SET is_default=false WHERE customer_user_id=$1 AND id<>$2',[req.customer.id,r.rows[0].id]);res.status(201).json(r.rows[0])}catch(e){next(e)}});
+app.delete('/api/customer/addresses/:id',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{await query('DELETE FROM customer_addresses WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.customer.id]);res.json({ok:true})}catch(e){next(e)}});
+app.post('/api/customer/favorites/:itemId',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const id=Number(req.params.itemId),q=await query('SELECT 1 FROM favorites WHERE customer_user_id=$1 AND item_id=$2',[req.customer.id,id]);if(q.rows[0])await query('DELETE FROM favorites WHERE customer_user_id=$1 AND item_id=$2',[req.customer.id,id]);else await query('INSERT INTO favorites(customer_user_id,item_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[req.customer.id,id]);res.json({favorite:!q.rows[0]})}catch(e){next(e)}});
+app.get('/api/customer/orders',customerAuth,async(req,res,next)=>{try{const q=await query('SELECT * FROM orders WHERE customer_user_id=$1 ORDER BY id DESC LIMIT 100',[req.customer.id]);res.json({orders:q.rows.map(o=>({...o,id:Number(o.id),total:Number(o.total),items:JSON.parse(o.items_json)}))})}catch(e){next(e)}});
+app.post('/api/customer/reorder/:id',customerAuth,async(req,res,next)=>{try{const q=await query('SELECT items_json FROM orders WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.customer.id]);if(!q.rows[0])return res.status(404).json({error:'الطلب غير موجود'});res.json({items:JSON.parse(q.rows[0].items_json)})}catch(e){next(e)}});
+app.post('/api/customer/reviews',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const id=Number(req.body?.orderId),rating=Number(req.body?.rating),comment=String(req.body?.comment||'').trim();const q=await query("SELECT id FROM orders WHERE id=$1 AND customer_user_id=$2 AND status='delivered'",[id,req.customer.id]);if(!q.rows[0]||rating<1||rating>5)return res.status(400).json({error:'لا يمكن تقييم هذا الطلب'});await query('INSERT INTO order_reviews(order_id,customer_user_id,rating,comment) VALUES($1,$2,$3,$4) ON CONFLICT(order_id) DO UPDATE SET rating=EXCLUDED.rating,comment=EXCLUDED.comment',[id,req.customer.id,rating,comment]);res.json({ok:true})}catch(e){next(e)}});
+app.get('/api/public/delivery-zones',async(req,res,next)=>{try{const q=await query('SELECT id,name,fee,min_order FROM delivery_zones WHERE active=true ORDER BY sort_order,id');res.json({zones:q.rows})}catch(e){next(e)}});
+app.post('/api/public/coupon/validate',async(req,res,next)=>{try{const code=String(req.body?.code||'').trim().toUpperCase(),subtotal=Number(req.body?.subtotal||0),q=await query('SELECT * FROM coupons WHERE code=$1 AND active=true',[code]),c=q.rows[0],now=new Date();if(!c||c.starts_at&&new Date(c.starts_at)>now||c.ends_at&&new Date(c.ends_at)<now||c.max_uses!=null&&c.used_count>=c.max_uses)return res.status(400).json({error:'رمز الخصم غير صالح أو منتهي'});if(subtotal<Number(c.min_order))return res.status(400).json({error:'الحد الأدنى للطلب غير متحقق'});const discount=c.type==='percent'?Math.min(subtotal,subtotal*Number(c.value)/100):Math.min(subtotal,Number(c.value));res.json({code,discount,total:subtotal-discount})}catch(e){next(e)}});
 // Upload an item/offer image to Supabase Storage.
 // Images are sent as a data URL from the admin UI; the server keeps the
 // Supabase service-role key private and returns only the public image URL.
@@ -543,8 +575,16 @@ app.get('/api/store', async (req, res, next) => {
 
 app.post('/api/orders', orderLimiter, async (req, res, next) => {
   try {
-    const customerName = String(req.body?.customerName || '').trim();
-    const customerPhone = String(req.body?.customerPhone || '').trim();
+    let customerUserId = null;
+    try {
+      const token = parseCookies(req).customer_session || '';
+      const cp = jwt.verify(token, JWT_SECRET);
+      const cq = await query('SELECT id,name,phone,active FROM customer_users WHERE id=$1 AND active=true', [cp.id]);
+      if (cq.rows[0]) customerUserId = Number(cq.rows[0].id);
+    } catch {}
+    const customerRecord = customerUserId ? (await query('SELECT id,name,phone FROM customer_users WHERE id=$1 AND active=true', [customerUserId])).rows[0] : null;
+    const customerName = String(customerRecord?.name || req.body?.customerName || '').trim();
+    const customerPhone = String(customerRecord?.phone || req.body?.customerPhone || '').trim();
     const address = String(req.body?.address || '').trim();
     const notes = String(req.body?.notes || '').trim();
     const items = req.body?.items;
@@ -555,7 +595,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'بعض بيانات الطلب طويلة جداً' });
     }
 
-    const itemIds = items.map(x => Number(x.itemId)).filter(n => Number.isInteger(n) && n > 0);
+    const itemIds = items.map(x => Number(x.productId || x.itemId)).filter(n => Number.isInteger(n) && n > 0);
     const offerIds = items
       .map(x => Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN)))
       .filter(n => Number.isInteger(n) && n > 0);
@@ -578,7 +618,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
         return res.status(400).json({ error: 'كمية غير صالحة في الطلب' });
       }
       const qty = rawQty;
-      const numericItemId = Number(x.itemId);
+      const numericItemId = Number(x.productId || x.itemId);
       const offerId = Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN));
 
       if (Number.isInteger(offerId) && offerId > 0 && offerMap.has(offerId)) {
@@ -590,10 +630,11 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       }
 
       if (Number.isInteger(numericItemId) && numericItemId > 0 && itemMap.has(numericItemId)) {
-        const r = itemMap.get(numericItemId);
-        const price = Number(r.price);
-        normalized.push({ itemId: Number(r.id), name: r.name, price, quantity: qty, type: 'item' });
-        total += price * qty;
+        const r = itemMap.get(numericItemId); let options=[]; try{options=Array.isArray(JSON.parse(r.options_json||'[]'))?JSON.parse(r.options_json||'[]'):[]}catch{}
+        const selected=Array.isArray(x.options)?x.options.map(String):[]; const allowed=new Map(options.map(o=>[String(o.name),Number(o.price||0)]));
+        if(selected.some(name=>!allowed.has(name))) return res.status(400).json({error:`خيارات التخصيص للصنف «${r.name}» غير صالحة`});
+        const extra=selected.reduce((sum,name)=>sum+Math.max(0,allowed.get(name)),0); const price=Number(r.price)+extra;
+        normalized.push({ itemId:Number(r.id), name:r.name, price, quantity:qty, type:'item', options:selected }); total += price * qty;
       }
     }
 
@@ -604,10 +645,10 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'قيمة الطلب غير صالحة' });
     }
 
-    const result = await query(
-      'INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',
-      [customerName, customerPhone, address, notes, JSON.stringify(normalized), total]
-    );
+    
+    const couponCode=String(req.body?.couponCode||'').trim().toUpperCase();let discount=0;if(couponCode){const cq=await query('SELECT * FROM coupons WHERE code=$1 AND active=true',[couponCode]),c=cq.rows[0];if(!c)return res.status(400).json({error:'رمز الخصم غير صالح'});if(Number(c.min_order)>total)return res.status(400).json({error:'الحد الأدنى للطلب غير متحقق'});discount=c.type==='percent'?Math.min(total,total*Number(c.value)/100):Math.min(total,Number(c.value))}
+    const deliveryFee=Number(req.body?.deliveryFee||0);if(!Number.isFinite(deliveryFee)||deliveryFee<0)return res.status(400).json({error:'رسم التوصيل غير صالح'});const finalTotal=Math.max(0,total-discount)+deliveryFee;const estimated=new Date(Date.now()+45*60000);
+    const result = await query('INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,coupon_code,estimated_ready_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',[customerName,customerPhone,address,notes,JSON.stringify(normalized),finalTotal,customerUserId,deliveryFee,couponCode||null,estimated]);
     const id = Number(result.rows[0].id);
 
     await query(
@@ -626,7 +667,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       ? `https://wa.me/${String(s.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`مرحباً ${customerName}، تم استلام طلبك رقم #${id} بقيمة ${total} ${s.currency}.`)}`
       : '';
 
-    res.status(201).json({ id, total, whatsappSent, waLink });
+    res.status(201).json({ id, total:finalTotal, subtotal:total, discount, deliveryFee, whatsappSent, waLink, estimatedReadyAt:estimated });
   } catch (e) { next(e); }
 });
 
@@ -639,7 +680,7 @@ app.get('/api/orders/:id', async (req, res, next) => {
     const order = rows[0];
     if (!order || String(order.customer_phone).replace(/\D/g, '') !== phone) return res.status(404).json({ error: 'لم يتم العثور على طلب مطابق' });
     const s = await getSettings();
-    res.json({ id: Number(order.id), status: order.status || 'new', total: Number(order.total), currency: s.currency });
+    res.json({ id:Number(order.id),status:order.status||'new',total:Number(order.total),currency:s.currency,estimatedReadyAt:order.estimated_ready_at });
   } catch (e) { next(e); }
 });
 
@@ -700,19 +741,19 @@ app.get('/api/admin/data', auth, async (req, res, next) => {
     const canSettings = isAdmin || req.user.permissions.includes('MANAGE_SETTINGS');
     const canUsers = isAdmin || req.user.permissions.includes('MANAGE_USERS');
 
-    const [categories, items, offers, orders, users, settings] = await Promise.all([
+    const [categories, items, offers, orders, users, settings, zones, coupons, reviews] = await Promise.all([
       canItems ? query('SELECT * FROM categories ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
       canItems ? query('SELECT * FROM items ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
       canItems ? query('SELECT * FROM offers ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
       canOrders ? query('SELECT * FROM orders ORDER BY id DESC LIMIT 100') : Promise.resolve({ rows: [] }),
       canUsers ? query('SELECT id,name,email,role,permissions,active,created_at FROM users ORDER BY id') : Promise.resolve({ rows: [] }),
-      canSettings ? getSettings() : getSettings().then(publicSettings)
+      canSettings ? getSettings() : getSettings().then(publicSettings), canItems?query('SELECT * FROM delivery_zones ORDER BY sort_order,id'):Promise.resolve({rows:[]}), canItems?query('SELECT * FROM coupons ORDER BY id DESC'):Promise.resolve({rows:[]}), canOrders?query('SELECT r.*,c.name AS customer_name FROM order_reviews r LEFT JOIN customer_users c ON c.id=r.customer_user_id ORDER BY r.id DESC LIMIT 100'):Promise.resolve({rows:[]})
     ]);
 
     res.json({
       categories: categories.rows,
       items: items.rows.map(x => ({ ...x, available: !!x.available, featured: !!x.featured })),
-      offers: offers.rows.map(x => ({ ...x, active: !!x.active })),
+      offers: offers.rows.map(x => ({ ...x, active: !!x.active })), zones:zones.rows.map(x=>({...x,id:Number(x.id),fee:Number(x.fee),min_order:Number(x.min_order),active:!!x.active})), coupons:coupons.rows.map(x=>({...x,id:Number(x.id),value:Number(x.value),min_order:Number(x.min_order),active:!!x.active})), reviews:reviews.rows.map(x=>({...x,id:Number(x.id),rating:Number(x.rating)})),
       orders: orders.rows.map(o => ({ ...o, id: Number(o.id), total: Number(o.total), items: JSON.parse(o.items_json), whatsapp_sent: !!o.whatsapp_sent })),
       settings,
       users: users.rows.map(u => ({ ...u, id: Number(u.id), permissions: JSON.parse(u.permissions || '[]'), active: !!u.active }))
@@ -729,7 +770,7 @@ app.post('/api/admin/items', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), asy
   try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0 } = req.body; if (!name || price === undefined) return res.status(400).json({ error: 'الاسم والسعر مطلوبان' }); const r = await query('INSERT INTO items(category_id,name,description,price,image,available,featured,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0]); res.json({ id: Number(r.rows[0].id) }); } catch (e) { next(e); }
 });
 app.put('/api/admin/items/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
-  try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0 } = req.body; await query('UPDATE items SET category_id=$1,name=$2,description=$3,price=$4,image=$5,available=$6,featured=$7,sort_order=$8 WHERE id=$9', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); }
+  try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0, allergens = '', options_json = '[]' } = req.body; let opts='[]'; try{JSON.parse(options_json);opts=String(options_json)}catch{} await query('UPDATE items SET category_id=$1,name=$2,description=$3,price=$4,image=$5,available=$6,featured=$7,sort_order=$8,allergens=$9,options_json=$10 WHERE id=$11', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0, String(allergens).slice(0,500), opts, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); }
 });
 app.delete('/api/admin/items/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM items WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
 
@@ -775,7 +816,7 @@ app.put('/api/admin/orders/:id', auth, requireCsrf, requirePerm('RECEIVE_ORDERS'
     const allowed = ['new','confirmed','preparing','ready','delivered','cancelled'];
     const nextStatus = req.body.status;
     if (!allowed.includes(nextStatus)) return res.status(400).json({ error: 'حالة غير صالحة' });
-    const found = await query('SELECT id,status FROM orders WHERE id=$1', [req.params.id]);
+    const found = await query('SELECT id,status,customer_user_id FROM orders WHERE id=$1', [req.params.id]);
     const order = found.rows[0];
     if (!order) return res.status(404).json({ error: 'الطلب غير موجود' });
     const previousStatus = order.status || 'new';
@@ -785,6 +826,8 @@ app.put('/api/admin/orders/:id', auth, requireCsrf, requirePerm('RECEIVE_ORDERS'
       'INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',
       [req.params.id, previousStatus, nextStatus, req.user.id, req.user.name || req.user.email || 'الإدارة']
     );
+    const labels = {new:'جديد',confirmed:'مؤكد',preparing:'قيد التحضير',ready:'جاهز',delivered:'تم التسليم',cancelled:'ملغى'};
+    if(order.customer_user_id) await query('INSERT INTO notifications(customer_user_id,order_id,channel,title,body) VALUES($1,$2,$3,$4,$5)',[order.customer_user_id,Number(req.params.id),'in-app',`تحديث الطلب #${req.params.id}`,`حالة طلبك الآن: ${labels[nextStatus]||nextStatus}`]);
     let whatsappStatusSent = false;
     try { whatsappStatusSent = await sendWhatsAppStatusUpdate(Number(req.params.id), nextStatus); }
     catch (e) { console.error('WhatsApp status error:', e.message); }
@@ -802,7 +845,7 @@ app.get('/api/admin/orders/:id/history', auth, requirePerm('RECEIVE_ORDERS'), as
   } catch (e) { next(e); }
 });
 
-app.post('/api/admin/users', auth, requireCsrf, requirePerm('MANAGE_USERS'), async (req, res, next) => {
+app.post('/api/admin/users', auth, requireCsrf, requireAdmin, requirePerm('MANAGE_USERS'), async (req, res, next) => {
   try {
     const name = String(req.body?.name || '').trim();
     const email = String(req.body?.email || '').trim().toLowerCase();
@@ -878,6 +921,9 @@ app.delete('/api/admin/users/:id', auth, requireCsrf, requireAdmin, requirePerm(
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
+app.get('/api/admin/analytics',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,next)=>{try{const [a,d,b]=await Promise.all([query("SELECT COUNT(*)::int orders,COALESCE(SUM(total),0) revenue,COUNT(*) FILTER(WHERE status='delivered')::int delivered,COUNT(*) FILTER(WHERE status='cancelled')::int cancelled,COALESCE(AVG(total),0) avg_order FROM orders"),query("SELECT TO_CHAR(created_at AT TIME ZONE 'Asia/Beirut','YYYY-MM-DD') day,COUNT(*)::int orders,COALESCE(SUM(total),0) revenue FROM orders WHERE created_at>=NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY 1"),query(`SELECT x->>'name' name,SUM((x->>'quantity')::numeric)::int quantity FROM orders o CROSS JOIN LATERAL jsonb_array_elements(o.items_json::jsonb) x WHERE o.created_at>=NOW()-INTERVAL '90 days' GROUP BY 1 ORDER BY quantity DESC LIMIT 10`)]);res.json({summary:{...a.rows[0],revenue:Number(a.rows[0].revenue),avg_order:Number(a.rows[0].avg_order)},byDay:d.rows.map(x=>({...x,orders:Number(x.orders),revenue:Number(x.revenue)})),bestsellers:b.rows})}catch(e){next(e)}});
+app.get('/api/admin/orders/export.csv',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,next)=>{try{const q=await query('SELECT id,customer_name,customer_phone,address,total,status,created_at FROM orders ORDER BY id DESC LIMIT 5000'),esc=v=>`"${String(v??'').replace(/"/g,'""')}"`,csv='\ufeff'+['id,customer_name,customer_phone,address,total,status,created_at',...q.rows.map(r=>[r.id,r.customer_name,r.customer_phone,r.address,r.total,r.status,r.created_at.toISOString()].map(esc).join(','))].join('\n');res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="orders.csv"');res.send(csv)}catch(e){next(e)}});
+app.get('/api/admin/audit',auth,requireAdmin,async(req,res,next)=>{try{const q=await query('SELECT * FROM audit_logs ORDER BY id DESC LIMIT 200');res.json({logs:q.rows})}catch(e){next(e)}});
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
@@ -888,4 +934,4 @@ if (fs.existsSync(clientDist)) {
 
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'حدث خطأ في الخادم' }); });
 
-ensureOrderHistoryTable().then(() => seed()).then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`))).catch(err => { console.error('Startup failed:', err); process.exit(1); });
+ensureOrderHistoryTable().then(() => ensurePhase2Schema()).then(() => seed()).then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`))).catch(err => { console.error('Startup failed:', err); process.exit(1); });
