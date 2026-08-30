@@ -2169,3 +2169,10 @@ footer {
 .tracking-cancelled { padding: 12px 14px; border-radius: 12px; background: #fee2e2; color: #991b1b; margin-bottom: 16px; }
 .tracking-summary { display: flex; justify-content: space-between; padding: 14px 0; border-top: 1px solid var(--border); margin-bottom: 14px; }
 @media (max-width: 760px) { .tracking-box form { grid-template-columns: 1fr; } .tracking-steps { gap: 3px; } .tracking-step b { font-size: 9px; } }
+
+/* New items section: make newly added products visible on the homepage
+   even when they have not been marked as featured yet. */
+.new-item-card .new-badge {
+  display: inline-flex;
+  margin-bottom: 6px;
+}
