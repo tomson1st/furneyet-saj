@@ -115,14 +115,36 @@ function tokenFor(u) {
 function safeWhatsAppRecipient(s) { return s?.whatsappRecipient || ''; }
 
 async function sendWhatsAppOrder(order) {
-  if (process.env.WHATSAPP_ENABLED !== 'true') return false;
+  const settings = await getSettings();
+  const enabled = settings.whatsappEnabled === 'true' || process.env.WHATSAPP_ENABLED === 'true';
+  if (!enabled) return false;
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const recipient = String(safeWhatsAppRecipient(await getSettings()) || process.env.WHATSAPP_RECIPIENT_PHONE || '').replace(/\D/g, '');
+  const recipient = String(safeWhatsAppRecipient(settings) || process.env.WHATSAPP_RECIPIENT_PHONE || '').replace(/\D/g, '');
   if (!token || !phoneId || !recipient) return false;
-  const s = await getSettings();
+  const s = settings;
   const lines = order.items.map(i => `• ${i.name} × ${i.quantity} = ${Number(i.price) * i.quantity} ${s.currency}`).join('\n');
   const body = `طلب جديد #${order.id}\nالزبون: ${order.customerName}\nالهاتف: ${order.customerPhone}\nالعنوان: ${order.address || 'استلام من الفرنية'}\n\n${lines}\n\nالمجموع: ${order.total} ${s.currency}\nملاحظات: ${order.notes || '-'}`;
+  const r = await fetch(`https://graph.facebook.com/v22.0/${phoneId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to: recipient, type: 'text', text: { body } })
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return true;
+}
+
+
+async function sendWhatsAppStatusUpdate(orderId, status) {
+  const settings = await getSettings();
+  const enabled = settings.whatsappEnabled === 'true' || process.env.WHATSAPP_ENABLED === 'true';
+  if (!enabled) return false;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const recipient = String(settings.whatsappRecipient || process.env.WHATSAPP_RECIPIENT_PHONE || '').replace(/\D/g, '');
+  if (!token || !phoneId || !recipient) return false;
+  const labels = { new: 'جديد', confirmed: 'مؤكد', preparing: 'قيد التحضير', ready: 'جاهز', delivered: 'تم التسليم', cancelled: 'ملغى' };
+  const body = `تحديث طلب #${orderId}\nالحالة الجديدة: ${labels[status] || status}`;
   const r = await fetch(`https://graph.facebook.com/v22.0/${phoneId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -401,6 +423,8 @@ app.post('/api/admin/whatsapp/test', auth, requirePerm('MANAGE_SETTINGS'), async
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const settings = await getSettings();
     const recipient = String(settings.whatsappRecipient || process.env.WHATSAPP_RECIPIENT_PHONE || '').replace(/\D/g, '');
+    const enabled = settings.whatsappEnabled === 'true' || process.env.WHATSAPP_ENABLED === 'true';
+    if (!enabled) return res.status(400).json({ error: 'إرسال WhatsApp غير مفعّل. فعّله من إدارة الموقع أولاً.' });
     if (!token || !phoneId || !recipient) {
       return res.status(400).json({ error: 'إعدادات WhatsApp غير مكتملة. تأكد من WHATSAPP_ACCESS_TOKEN وWHATSAPP_PHONE_NUMBER_ID ورقم الاستقبال.' });
     }
@@ -469,7 +493,10 @@ app.put('/api/admin/orders/:id', auth, requirePerm('RECEIVE_ORDERS'), async (req
       'INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',
       [req.params.id, previousStatus, nextStatus, req.user.id, req.user.name || req.user.email || 'الإدارة']
     );
-    res.json({ ok: true, previousStatus, status: nextStatus });
+    let whatsappStatusSent = false;
+    try { whatsappStatusSent = await sendWhatsAppStatusUpdate(Number(req.params.id), nextStatus); }
+    catch (e) { console.error('WhatsApp status error:', e.message); }
+    res.json({ ok: true, previousStatus, status: nextStatus, whatsappStatusSent });
   } catch (e) { next(e); }
 });
 
