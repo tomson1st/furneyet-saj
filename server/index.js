@@ -116,8 +116,53 @@ async function sendWhatsAppOrder(order) {
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '6mb' }));
 app.use(morgan('dev'));
+
+
+// Upload an item/offer image to Supabase Storage.
+// Images are sent as a data URL from the admin UI; the server keeps the
+// Supabase service-role key private and returns only the public image URL.
+app.post('/api/admin/upload-image', auth, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
+  try {
+    const { dataUrl, fileName = 'image' } = req.body || {};
+    if (!dataUrl || typeof dataUrl !== 'string') return res.status(400).json({ error: 'الصورة مطلوبة' });
+
+    const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: 'نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP أو GIF.' });
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'furneyet-saj';
+    if (!supabaseUrl || !serviceKey) {
+      return res.status(500).json({ error: 'إعدادات Supabase Storage غير موجودة في Render.' });
+    }
+
+    const ext = ({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'})[match[1]];
+    const safeBase = String(fileName).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 50) || 'image';
+    const objectPath = `items/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeBase}.${ext}`;
+    const bytes = Buffer.from(match[2], 'base64');
+    if (bytes.length > 4 * 1024 * 1024) return res.status(400).json({ error: 'حجم الصورة يجب ألا يتجاوز 4MB.' });
+
+    const base = supabaseUrl.replace(/\/$/, '');
+    const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+    // Create a public bucket once if it does not already exist.
+    const bucketCheck = await fetch(`${base}/storage/v1/bucket/${encodeURIComponent(bucket)}`, { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
+    if (!bucketCheck.ok) {
+      const create = await fetch(`${base}/storage/v1/bucket`, { method: 'POST', headers, body: JSON.stringify({ id: bucket, name: bucket, public: true }) });
+      if (!create.ok && create.status !== 409) throw new Error(await create.text());
+    }
+
+    const upload = await fetch(`${base}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`, {
+      method: 'POST',
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': match[1], 'x-upsert': 'false' },
+      body: bytes
+    });
+    if (!upload.ok) throw new Error(await upload.text());
+
+    res.json({ url: `${base}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath}` });
+  } catch (e) { next(e); }
+});
 
 app.get('/api/store', async (req, res, next) => {
   try {
