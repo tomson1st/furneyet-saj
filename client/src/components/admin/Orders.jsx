@@ -2,18 +2,19 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Search,Clock,CheckCircle2,X,Phone,MapPin,ChevronLeft,Edit3,CheckCircle2 as CheckIcon,Printer} from 'lucide-react';
 import {api,money,moneyInWords} from '../../lib/utils';
 import {useProgress} from '../../context/ProgressContext';
-import {openInvoicePrint} from './InvoicePrint';
+import {openInvoicePrint,printInvoiceDirect} from './InvoicePrint';
 
 function PrintDialog({order,onClose,onPrint}){
   const [invoice,setInvoice]=useState(true);
   const [kitchen,setKitchen]=useState(true);
   const [size,setSize]=useState('A4');
+  const [direct,setDirect]=useState(true);
   const submit=()=>{
     const modes=[];
     if(invoice) modes.push('invoice');
     if(kitchen) modes.push('kitchen');
     if(!modes.length){ alert('اختر الفاتورة أو طلب المطبخ على الأقل'); return; }
-    onPrint(order,size,modes);
+    onPrint(order,size,modes,direct);
   };
   return <div className="modal-bg print-size-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
     <div className="modal print-size-modal print-options-modal" role="dialog" aria-modal="true" aria-labelledby="print-options-title">
@@ -33,6 +34,7 @@ function PrintDialog({order,onClose,onPrint}){
           <option value="58mm">58mm — طابعة حرارية صغيرة</option>
         </select>
       </div>
+      <label className="print-direct-option"><input type="checkbox" checked={direct} onChange={e=>setDirect(e.target.checked)}/><span><strong>طباعة مباشرة</strong><small>بدون فتح صفحة استعراض الفاتورة أو الطلب</small></span></label>
       <div className="print-dialog-actions">
         <button className="btn primary" onClick={submit}>طباعة المحدد</button>
         <button className="btn ghost" onClick={onClose}>إلغاء</button>
@@ -103,13 +105,17 @@ export default function Orders({data,refresh}){
       await refresh();
     }catch(err){alert(err.message||'تعذر تحديث الحالة');}
   };
-  const printOrderNow=async (order,size,modes)=>{
+  const printOrderNow=async (order,size,modes,direct)=>{
     try{
       const selected = Array.isArray(modes) ? modes : [modes];
       if(!selected.length) return;
-      const windows=selected.map(()=>window.open('', '_blank', 'width=900,height=1000'));
-      if(windows.some(w=>!w)){ windows.filter(Boolean).forEach(w=>w.close()); throw new Error('تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة للموقع.'); }
-      for(let i=0;i<selected.length;i++) await openInvoicePrint(order.id,size,selected[i],windows[i]);
+      if(direct){
+        for(const mode of selected) await printInvoiceDirect(order.id,size,mode);
+      }else{
+        const windows=selected.map(()=>window.open('', '_blank', 'width=900,height=1000'));
+        if(windows.some(w=>!w)){ windows.filter(Boolean).forEach(w=>w.close()); throw new Error('تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة للموقع.'); }
+        for(let i=0;i<selected.length;i++) await openInvoicePrint(order.id,size,selected[i],windows[i]);
+      }
       setPrintOrder(null);
     }catch(err){ alert(err.message||'تعذر فتح الطباعة'); }
   };
