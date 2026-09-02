@@ -1009,7 +1009,6 @@ app.get('/api/admin/orders/:id/invoice', auth, async (req, res, next) => {
     `, [id]);
     const order = orderQuery.rows[0];
     if (!order) return res.status(404).json({ error: 'الطلب غير موجود' });
-    if (order.status !== 'delivered') return res.status(400).json({ error: 'يمكن طباعة الفاتورة فقط للطلبات التي حالتها تم التسليم' });
 
     let storedItems = [];
     try { storedItems = JSON.parse(order.items_json || '[]'); } catch { storedItems = []; }

@@ -11,6 +11,7 @@ export default function Orders({data,refresh}){
   const [specificDate,setSpecificDate]=useState('');
   const [history,setHistory]=useState(null);
   const [printOrder,setPrintOrder]=useState(null);
+  const [printMode,setPrintMode]=useState('invoice');
   const historyPanelRef=useRef(null);
 
   useEffect(()=>{
@@ -65,8 +66,8 @@ export default function Orders({data,refresh}){
       await refresh();
     }catch(err){alert(err.message||'تعذر تحديث الحالة');}
   };
-  const printInvoice=async (order,size)=>{
-    try{ await openInvoicePrint(order.id,size); setPrintOrder(null); }catch(err){ alert(err.message||'تعذر فتح الفاتورة'); }
+  const printOrderNow=async (order,size,mode)=>{
+    try{ await openInvoicePrint(order.id,size,mode); setPrintOrder(null); }catch(err){ alert(err.message||'تعذر فتح الطباعة'); }
   };
   const openHistory=async order=>{
     try{
@@ -83,7 +84,7 @@ export default function Orders({data,refresh}){
       {(statusFilter!=='all'||dateFilter!=='all')&&<button className="btn ghost filter-reset" onClick={()=>run('جاري إعادة ضبط الفلاتر…',async()=>resetFilters())}>إعادة ضبط</button>}
     </div>
     <div className="status-legend">{Object.entries(statuses).map(([k,v])=><span key={k} className={`legend-item status-${k}`}><i></i>{v}</span>)}</div>
-    <div className="table-wrap"><table><thead><tr><th>الطلب</th><th>الزبون</th><th>الأصناف</th><th>المجموع</th><th>الحالة</th><th>السجل</th><th>WhatsApp</th><th>الفاتورة</th></tr></thead><tbody>
+    <div className="table-wrap"><table><thead><tr><th>الطلب</th><th>الزبون</th><th>الأصناف</th><th>المجموع</th><th>الحالة</th><th>السجل</th><th>WhatsApp</th><th>طباعة</th></tr></thead><tbody>
       {filteredOrders.length===0?<tr><td colSpan="8" className="empty-orders">لا توجد طلبات مطابقة للفلاتر المحددة.</td></tr>:filteredOrders.map(o=><tr key={o.id} className={`order-row status-row-${o.status||'new'}`}>
         <td><b>#{o.id}</b><small>{getOrderDate(o)?getOrderDate(o).toLocaleString('ar-LB-u-nu-latn',{timeZone:'Asia/Beirut'}):'—'}</small></td>
         <td><b>{o.customer_name}</b><small>{o.customer_phone}</small><small>{o.address}</small></td>
@@ -91,10 +92,10 @@ export default function Orders({data,refresh}){
         <td><div className="order-total-values"><b>{money(o.total,data.settings.currency)}</b><small>{moneyInWords(o.total,data.settings.currency)}</small></div></td>
         <td><select className={`status-select status-${o.status||'new'}`} value={o.status||'new'} onChange={e=>statusChanged(o.id,e.target.value)}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></td>
         <td><button className="icon-btn history-btn" title="سجل تغييرات الطلب" onClick={()=>openHistory(o)}><Clock size={16}/></button></td>
-        <td>{o.whatsapp_sent?'✓ أُرسلت':'—'}</td><td>{o.status==='delivered'?<button className="icon-btn invoice-btn" title="طباعة الفاتورة" onClick={()=>setPrintOrder(o)}><Printer size={16}/></button>:'—'}</td>
+        <td>{o.whatsapp_sent?'✓ أُرسلت':'—'}</td><td><div className="order-print-actions"><button className="icon-btn invoice-btn" title="طباعة الفاتورة" onClick={()=>{setPrintMode('invoice');setPrintOrder(o)}}><Printer size={16}/></button><button className="icon-btn kitchen-print-btn" title="طباعة طلب المطبخ" onClick={()=>{setPrintMode('kitchen');setPrintOrder(o)}}><span className="kitchen-print-glyph">م</span></button></div></td>
       </tr>)}
     </tbody></table></div>
-    {printOrder&&<div className="modal-bg print-size-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setPrintOrder(null)}}><div className="modal print-size-modal" role="dialog" aria-modal="true" aria-labelledby="print-size-title"><button className="close" onClick={()=>setPrintOrder(null)}><X/></button><span className="eyebrow">طباعة الفاتورة</span><h2 id="print-size-title">اختر حجم الطباعة</h2><p className="muted">الطلب #{printOrder.id}</p><div className="print-size-options"><button onClick={()=>printInvoice(printOrder,'A4')}><strong>A4</strong><span>فاتورة ورقية عادية</span></button><button onClick={()=>printInvoice(printOrder,'80mm')}><strong>80mm</strong><span>طابعة حرارية للمطاعم</span></button><button onClick={()=>printInvoice(printOrder,'58mm')}><strong>58mm</strong><span>طابعة حرارية صغيرة</span></button></div></div></div>}
+    {printOrder&&<div className="modal-bg print-size-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setPrintOrder(null)}}><div className="modal print-size-modal" role="dialog" aria-modal="true" aria-labelledby="print-size-title"><button className="close" onClick={()=>setPrintOrder(null)}><X/></button><span className="eyebrow">{printMode==='kitchen'?'طباعة طلب المطبخ':'طباعة الفاتورة'}</span><h2 id="print-size-title">اختر حجم الطباعة</h2><p className="muted">الطلب #{printOrder.id}</p><div className="print-size-options"><button onClick={()=>printOrderNow(printOrder,'A4',printMode)}><strong>A4</strong><span>فاتورة ورقية عادية</span></button><button onClick={()=>printOrderNow(printOrder,'80mm',printMode)}><strong>80mm</strong><span>طابعة حرارية للمطاعم</span></button><button onClick={()=>printOrderNow(printOrder,'58mm',printMode)}><strong>58mm</strong><span>طابعة حرارية صغيرة</span></button></div></div></div>}
     {history&&<div ref={historyPanelRef} id="order-history-panel" className="order-history-panel">
       <div className="order-history-head"><div><span className="eyebrow">سجل الطلب</span><h3>الطلب #{history.order.id}</h3></div><button className="icon-btn" onClick={()=>setHistory(null)} title="إغلاق"><X size={17}/></button></div>
       {history.history.length===0?<p className="muted">لا يوجد سجل تغييرات لهذا الطلب حتى الآن.</p>:<div className="order-history-list">{history.history.map(h=><div className="order-history-entry" key={h.id}><div className={`history-status-dot status-${h.new_status}`}></div><div><b>{statuses[h.old_status]||h.old_status} → {statuses[h.new_status]||h.new_status}</b><small>{h.changed_by_name||'الإدارة'} · {new Date(h.changed_at).toLocaleString('ar-LB-u-nu-latn',{timeZone:'Asia/Beirut'})}</small></div></div>)}</div>}

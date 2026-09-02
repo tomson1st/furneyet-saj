@@ -4685,3 +4685,29 @@ footer{padding:28px 22px 18px}
 .footer-contact>div b,.footer-contact>div a{font-size:13px;color:inherit;text-decoration:none}
 .footer-location{font-size:12px;color:inherit;text-decoration:underline;opacity:.8}
 @media(max-width:700px){.location-map{height:260px}.location-coordinates{grid-template-columns:1fr}.footer-main{grid-template-columns:1fr;gap:18px}.footer-brand{text-align:center}.footer-contact{text-align:center}}
+
+/* Items administration: tabs + expandable category table */
+.items-tabs{display:flex;align-items:center;gap:5px;border-bottom:1px solid var(--line);margin-bottom:16px;padding-bottom:7px}
+.items-tabs button{border:1px solid transparent;background:transparent;border-radius:11px;padding:9px 14px;display:flex;align-items:center;gap:6px;font:inherit;font-weight:800;color:var(--muted);cursor:pointer}
+.items-tabs button.active{background:var(--primary);color:#fff;box-shadow:0 5px 15px color-mix(in srgb,var(--primary) 20%,transparent)}
+.panel-title-inline{display:inline;margin:0 9px 0 0;font-size:20px}
+.category-admin-table{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface,#fff)}
+.category-admin-table-head,.category-admin-summary{display:grid;grid-template-columns:minmax(0,1fr) 130px 290px;align-items:center;gap:12px}
+.category-admin-table-head{padding:10px 14px;background:var(--primary-softer,#faf7f2);font-size:11px;color:var(--muted);font-weight:800}
+.category-admin-row{border-top:1px solid var(--line)}
+.category-admin-row:first-child{border-top:0}
+.category-admin-summary{padding:9px 12px;min-height:58px;cursor:pointer}
+.category-admin-summary:hover{background:var(--primary-softer,#faf7f2)}
+.category-admin-name{display:flex;align-items:center;gap:6px;min-width:0}.category-admin-name strong{font-size:14px}.category-expand-btn{border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:4px}
+.category-count{font-weight:900;text-align:center}.category-admin-actions{display:flex;justify-content:flex-end;align-items:center;gap:5px}.small-btn{padding:7px 9px!important;font-size:10px!important}
+.category-expanded-content{margin:0 12px 12px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--primary-softer,#faf7f2)}
+.category-expanded-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:11px;color:var(--muted)}
+.admin-category-product{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 9px;margin-top:6px}
+.admin-category-product-main{display:flex;align-items:center;gap:9px;min-width:0}.admin-category-product-main img,.admin-category-product-placeholder{width:42px;height:42px;border-radius:8px;object-fit:cover;flex:none}.admin-category-product-placeholder{display:grid;place-items:center;background:var(--primary-softer);color:var(--muted)}.admin-category-product-main>div{display:grid;gap:1px;min-width:0}.admin-category-product-main b{font-size:12px}.admin-category-product-main small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:600px}.admin-category-product-main span{font-size:10px;font-weight:800}.admin-category-product-actions{display:flex;gap:4px}.category-empty{padding:14px;text-align:center;color:var(--muted);font-size:11px}
+.order-print-actions{display:flex;justify-content:center;gap:4px}.kitchen-print-btn{font-size:12px;font-weight:900}.kitchen-print-glyph{display:inline-grid;place-items:center;font-size:11px;font-weight:900}
+@media(max-width:760px){.category-admin-table-head{display:none}.category-admin-summary{grid-template-columns:minmax(0,1fr) auto}.category-admin-actions{grid-column:1/-1;justify-content:flex-start;padding-right:27px}.category-admin-summary{padding:10px}.admin-category-product-main small{max-width:190px}.items-tabs{overflow-x:auto}.items-tabs button{white-space:nowrap}.order-print-actions{flex-wrap:wrap}}
+
+/* Homepage: maximum three cards per row */
+.popular-grid,.menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+@media(max-width:900px){.popular-grid,.menu-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:560px){.popular-grid,.menu-grid{grid-template-columns:1fr!important}}
