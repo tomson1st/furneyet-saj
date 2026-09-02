@@ -1,0 +1,14 @@
+import React,{useState} from 'react';
+import {Eye,MapPin,ShoppingBag,UserRound,X} from 'lucide-react';
+import {api,money} from '../../lib/utils';
+import {useProgress} from '../../context/ProgressContext';
+
+export default function CustomersPanel({data}){
+  const {run}=useProgress(); const [selected,setSelected]=useState(null);
+  const open=async c=>{try{const r=await run('جاري تحميل بيانات الزبون…',()=>api('/admin/customers/'+c.id));setSelected(r)}catch(e){alert(e.message)}};
+  return <section className="panel">
+    <div className="toolbar"><div><b>الزبائن</b><span className="muted"> عرض حسابات الزبائن وطلباتهم وعناوينهم</span></div><span className="muted">{data.customers?.length||0} زبون</span></div>
+    {data.customers?.length?<div className="customers-table-wrap"><table className="customers-table"><thead><tr><th>الزبون</th><th>الهاتف</th><th>البريد الإلكتروني</th><th>عدد الطلبات</th><th>آخر طلب</th><th>الحالة</th><th>تفاصيل</th></tr></thead><tbody>{data.customers.map(c=><tr key={c.id}><td><div className="customer-name-cell"><span className="customer-avatar"><UserRound size={17}/></span><b>{c.name}</b></div></td><td dir="ltr">{c.phone}</td><td>{c.email||'—'}</td><td><span className="customer-order-count"><ShoppingBag size={14}/>{c.order_count}</span></td><td>{c.last_order_at?new Date(c.last_order_at).toLocaleDateString('ar-LB'):'—'}</td><td><span className={c.active?'active-text':'muted'}>{c.active?'فعال':'موقوف'}</span></td><td><button className="icon-btn" title="عرض التفاصيل" onClick={()=>open(c)}><Eye size={17}/></button></td></tr>)}</tbody></table></div>:<div className="empty-state">لا يوجد زبائن مسجلون حتى الآن.</div>}
+    {selected&&<div className="modal-bg"><div className="modal customer-detail-modal"><button className="close" onClick={()=>setSelected(null)}><X/></button><span className="eyebrow">تفاصيل الزبون</span><h2>{selected.customer.name}</h2><div className="customer-detail-summary"><div><span>الهاتف</span><b dir="ltr">{selected.customer.phone}</b></div><div><span>البريد</span><b>{selected.customer.email||'—'}</b></div><div><span>الطلبات</span><b>{selected.orders.length}</b></div></div><h3>العناوين</h3>{selected.addresses.length?<div className="customer-address-list">{selected.addresses.map(a=><div key={a.id}><MapPin size={16}/><div><b>{a.label}</b><span>{a.address}</span></div>{a.is_default&&<small>افتراضي</small>}</div>)}</div>:<p className="muted">لا توجد عناوين محفوظة.</p>}<h3>آخر الطلبات</h3>{selected.orders.length?<div className="customer-order-list">{selected.orders.slice(0,10).map(o=><div key={o.id}><b>#{o.id}</b><span>{new Date(o.created_at).toLocaleDateString('ar-LB')}</span><span>{money(o.total,data.settings.currency)}</span><small>{o.status}</small></div>)}</div>:<p className="muted">لا توجد طلبات.</p>}</div></div>}
+  </section>
+}

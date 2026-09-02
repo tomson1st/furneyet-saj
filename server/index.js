@@ -769,6 +769,8 @@ app.post('/api/admin/whatsapp/test', auth, requireCsrf, requirePerm('MANAGE_SETT
   } catch (e) { next(e); }
 });
 
+app.get('/api/admin/customers/:id', auth, requirePerm('MANAGE_USERS'), async (req,res,next)=>{try{const id=Number(req.params.id);if(!Number.isInteger(id)||id<=0)return res.status(400).json({error:'معرّف الزبون غير صالح'});const c=(await query('SELECT id,name,phone,email,active,created_at FROM customer_users WHERE id=$1',[id])).rows[0];if(!c)return res.status(404).json({error:'الزبون غير موجود'});const [addresses,orders]=await Promise.all([query('SELECT id,label,address,is_default,created_at FROM customer_addresses WHERE customer_user_id=$1 ORDER BY is_default DESC,id',[id]),query('SELECT id,status,total,created_at,items_json FROM orders WHERE customer_user_id=$1 ORDER BY id DESC LIMIT 100',[id])]);res.json({customer:{...c,id:Number(c.id),active:!!c.active},addresses:addresses.rows.map(a=>({...a,id:Number(a.id),is_default:!!a.is_default})),orders:orders.rows.map(o=>({...o,id:Number(o.id),total:Number(o.total),items:JSON.parse(o.items_json)}))})}catch(e){next(e)}});
+
 app.get('/api/admin/data', auth, async (req, res, next) => {
   try {
     const isAdmin = req.user.role === 'admin';
@@ -777,12 +779,13 @@ app.get('/api/admin/data', auth, async (req, res, next) => {
     const canSettings = isAdmin || req.user.permissions.includes('MANAGE_SETTINGS');
     const canUsers = isAdmin || req.user.permissions.includes('MANAGE_USERS');
 
-    const [categories, items, offers, orders, users, settings, zones, coupons, reviews] = await Promise.all([
+    const [categories, items, offers, orders, users, customers, settings, zones, coupons, reviews] = await Promise.all([
       canItems ? query('SELECT * FROM categories ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
       canItems ? query('SELECT * FROM items ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
       canItems ? query('SELECT * FROM offers ORDER BY sort_order,id') : Promise.resolve({ rows: [] }),
       canOrders ? query('SELECT * FROM orders ORDER BY id DESC LIMIT 100') : Promise.resolve({ rows: [] }),
       canUsers ? query('SELECT id,name,email,role,permissions,active,created_at FROM users ORDER BY id') : Promise.resolve({ rows: [] }),
+      canUsers ? query(`SELECT c.id,c.name,c.phone,c.email,c.active,c.created_at,COUNT(o.id)::int AS order_count,COALESCE(MAX(o.created_at),NULL) AS last_order_at,COALESCE(SUM(CASE WHEN o.status <> 'cancelled' THEN o.total ELSE 0 END),0)::numeric AS total_spent FROM customer_users c LEFT JOIN orders o ON o.customer_user_id=c.id GROUP BY c.id ORDER BY c.id DESC`) : Promise.resolve({ rows: [] }),
       canSettings ? getSettings() : getSettings().then(publicSettings), canItems?query('SELECT * FROM delivery_zones ORDER BY sort_order,id'):Promise.resolve({rows:[]}), canItems?query('SELECT * FROM coupons ORDER BY id DESC'):Promise.resolve({rows:[]}), canOrders?query('SELECT r.*,c.name AS customer_name FROM order_reviews r LEFT JOIN customer_users c ON c.id=r.customer_user_id ORDER BY r.id DESC LIMIT 100'):Promise.resolve({rows:[]})
     ]);
 
@@ -792,7 +795,8 @@ app.get('/api/admin/data', auth, async (req, res, next) => {
       offers: offers.rows.map(x => ({ ...x, active: !!x.active })), zones:zones.rows.map(x=>({...x,id:Number(x.id),fee:Number(x.fee),min_order:Number(x.min_order),active:!!x.active})), coupons:coupons.rows.map(x=>({...x,id:Number(x.id),value:Number(x.value),min_order:Number(x.min_order),active:!!x.active})), reviews:reviews.rows.map(x=>({...x,id:Number(x.id),rating:Number(x.rating)})),
       orders: orders.rows.map(o => ({ ...o, id: Number(o.id), total: Number(o.total), items: JSON.parse(o.items_json), whatsapp_sent: !!o.whatsapp_sent })),
       settings,
-      users: users.rows.map(u => ({ ...u, id: Number(u.id), permissions: JSON.parse(u.permissions || '[]'), active: !!u.active }))
+      users: users.rows.map(u => ({ ...u, id: Number(u.id), permissions: JSON.parse(u.permissions || '[]'), active: !!u.active })),
+      customers: customers.rows.map(c => ({ ...c, id: Number(c.id), active: !!c.active, order_count: Number(c.order_count||0), total_spent: Number(c.total_spent||0) }))
     });
   } catch (e) { next(e); }
 });
@@ -803,7 +807,7 @@ app.put('/api/admin/categories/:id', auth, requireCsrf, requirePerm('MANAGE_ITEM
 app.delete('/api/admin/categories/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => { try { await query('DELETE FROM categories WHERE id=$1', [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); } });
 
 app.post('/api/admin/items', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
-  try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0 } = req.body; if (!name || price === undefined) return res.status(400).json({ error: 'الاسم والسعر مطلوبان' }); const r = await query('INSERT INTO items(category_id,name,description,price,image,available,featured,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0]); res.json({ id: Number(r.rows[0].id) }); } catch (e) { next(e); }
+  try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0, allergens = '', options_json = '[]' } = req.body; if (!name || price === undefined) return res.status(400).json({ error: 'الاسم والسعر مطلوبان' }); let opts='[]'; try{const parsed=JSON.parse(options_json); if(Array.isArray(parsed)) opts=JSON.stringify(parsed.slice(0,50).map(o=>({name:String(o.name||'').trim().slice(0,100),price:Math.max(0,Number(o.price)||0)})).filter(o=>o.name))}catch{} const r = await query('INSERT INTO items(category_id,name,description,price,image,available,featured,sort_order,allergens,options_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0, String(allergens).slice(0,500), opts]); res.json({ id: Number(r.rows[0].id) }); } catch (e) { next(e); }
 });
 app.put('/api/admin/items/:id', auth, requireCsrf, requirePerm('MANAGE_ITEMS'), async (req, res, next) => {
   try { const { category_id, name, description = '', price, image = '', available = true, featured = false, sort_order = 0, allergens = '', options_json = '[]' } = req.body; let opts='[]'; try{JSON.parse(options_json);opts=String(options_json)}catch{} await query('UPDATE items SET category_id=$1,name=$2,description=$3,price=$4,image=$5,available=$6,featured=$7,sort_order=$8,allergens=$9,options_json=$10 WHERE id=$11', [category_id || null, name, description, Number(price), image, !!available, !!featured, Number(sort_order) || 0, String(allergens).slice(0,500), opts, req.params.id]); res.json({ ok: true }); } catch (e) { next(e); }
