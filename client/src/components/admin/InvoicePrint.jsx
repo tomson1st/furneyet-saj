@@ -13,8 +13,8 @@ const formatDate = value => {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ar-LB-u-nu-latn', { timeZone: 'Asia/Beirut', dateStyle: 'medium', timeStyle: 'short' });
 };
 
-export async function openInvoicePrint(orderId, printSize = 'A4', mode = 'invoice') {
-  const printWindow = window.open('', '_blank', 'width=900,height=1000');
+export async function openInvoicePrint(orderId, printSize = 'A4', mode = 'invoice', targetWindow = null) {
+  const printWindow = targetWindow || window.open('', '_blank', 'width=900,height=1000');
   if (!printWindow) { alert('تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة للموقع.'); return; }
   printWindow.opener = null;
   const size = ['A4','80mm','58mm'].includes(printSize) ? printSize : 'A4';
