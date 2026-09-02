@@ -405,7 +405,7 @@ app.post('/api/public/coupon/validate',async(req,res,next)=>{try{
   const subtotal=Number(req.body?.subtotal);
   if(!code)return res.status(400).json({error:'يرجى إدخال كود الخصم'});
   if(!Number.isFinite(subtotal)||subtotal<=0)return res.status(400).json({error:'قيمة السلة غير صالحة لتطبيق الخصم'});
-  const q=await query('SELECT * FROM coupons WHERE UPPER(TRIM(code))=$1 AND active=true LIMIT 1',[code]);
+  const q=await query(`SELECT * FROM coupons WHERE LOWER(TRIM(code))=LOWER($1) AND COALESCE(active,true)=true LIMIT 1`,[code]);
   const c=q.rows[0],now=Date.now();
   if(!c)return res.status(400).json({error:'رمز الخصم غير موجود أو غير فعال'});
   if(c.starts_at){const startsAt=new Date(c.starts_at).getTime();if(Number.isFinite(startsAt)&&startsAt>now)return res.status(400).json({error:'كود الخصم لم يبدأ بعد'});}
@@ -677,7 +677,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
     const couponCode=String(req.body?.couponCode||'').trim().toUpperCase();
     let discount=0;
     if(couponCode){
-      const cq=await query('SELECT * FROM coupons WHERE code=$1 AND active=true',[couponCode]),c=cq.rows[0],now=new Date();
+      const cq=await query(`SELECT * FROM coupons WHERE LOWER(TRIM(code))=LOWER($1) AND COALESCE(active,true)=true LIMIT 1`,[couponCode]),c=cq.rows[0],now=new Date();
       if(!c||c.starts_at&&new Date(c.starts_at)>now||c.ends_at&&new Date(c.ends_at)<now||c.max_uses!=null&&c.used_count>=c.max_uses)return res.status(400).json({error:'رمز الخصم غير صالح أو منتهي'});
       if(Number(c.min_order)>total)return res.status(400).json({error:'الحد الأدنى للطلب غير متحقق'});
       discount=c.type==='percent'?Math.min(total,total*Number(c.value)/100):Math.min(total,Number(c.value));
