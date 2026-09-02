@@ -15,7 +15,7 @@ const formatDate = value => {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ar-LB', { timeZone: 'Asia/Beirut', dateStyle: 'medium', timeStyle: 'short' });
 };
 
-export async function openInvoicePrint(orderId) {
+export async function openInvoicePrint(orderId, printSize = 'A4') {
   const printWindow = window.open('', '_blank', 'width=900,height=1000');
   if (!printWindow) {
     alert('تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة للموقع.');
@@ -23,6 +23,8 @@ export async function openInvoicePrint(orderId) {
   }
 
   printWindow.opener = null;
+  const normalizedPrintSize = ['A4','80mm','58mm'].includes(printSize) ? printSize : 'A4';
+  const printClass = normalizedPrintSize === '58mm' ? 'thermal-58' : normalizedPrintSize === '80mm' ? 'thermal-80' : 'print-a4';
   printWindow.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>فاتورة الطلب #${escapeHtml(orderId)}</title><style>body{font-family:"Droid Arabic Kufi",Tahoma,Arial,sans-serif}</style></head><body><div style="padding:30px;text-align:center">جاري تجهيز الفاتورة…</div></body></html>`);
   printWindow.document.close();
 
@@ -90,9 +92,35 @@ table{width:100%;border-collapse:collapse;margin-top:4px}th,td{border-bottom:1px
 .footer{margin-top:28px;padding-top:12px;border-top:1px solid #ddd;text-align:center;color:#777;font-size:10px}.print-actions{display:flex;justify-content:center;gap:8px;margin:20px 0}.print-actions button{font:inherit;border:0;border-radius:8px;padding:9px 18px;cursor:pointer;background:#222;color:#fff}.print-actions button.secondary{background:#eee;color:#222}
 @media print{body{padding:0}.print-actions{display:none}.invoice{max-width:none}.header{break-inside:avoid}table{break-inside:auto}tr{break-inside:avoid;break-after:auto}}
 @page{size:A4;margin:12mm}
+@media print{
+  body.thermal-80{padding:0;width:80mm;font-size:10px}
+  body.thermal-58{padding:0;width:58mm;font-size:9px}
+  body.thermal-80 .invoice{max-width:70mm;width:70mm}
+  body.thermal-58 .invoice{max-width:50mm;width:50mm}
+  body.thermal-80 .header,body.thermal-58 .header{gap:6px;padding-bottom:6px;margin-bottom:7px}
+  body.thermal-80 .logo,body.thermal-80 .logo-fallback{width:42px;height:42px}
+  body.thermal-58 .logo,body.thermal-58 .logo-fallback{width:34px;height:34px}
+  body.thermal-80 .brand h1{font-size:15px} body.thermal-58 .brand h1{font-size:13px}
+  body.thermal-80 .brand p,body.thermal-58 .brand p{font-size:7px}
+  body.thermal-80 .invoice-meta{font-size:7px} body.thermal-58 .invoice-meta{font-size:6px}
+  body.thermal-80 .invoice-meta strong{font-size:9px} body.thermal-58 .invoice-meta strong{font-size:8px}
+  body.thermal-80 .section-title,body.thermal-58 .section-title{font-size:9px;margin:8px 0 4px;padding-bottom:2px}
+  body.thermal-80 .customer-grid,body.thermal-58 .customer-grid{display:block;border:0;padding:0}
+  body.thermal-80 .customer-grid div,body.thermal-58 .customer-grid div{display:flex;margin-bottom:2px}
+  body.thermal-80 .customer-grid span,body.thermal-58 .customer-grid span{min-width:50px}
+  body.thermal-80 th,body.thermal-80 td{padding:4px 2px;font-size:8px}
+  body.thermal-58 th,body.thermal-58 td{padding:3px 1px;font-size:7px}
+  body.thermal-80 .desc,body.thermal-80 .subline{font-size:7px} body.thermal-58 .desc,body.thermal-58 .subline{font-size:6px}
+  body.thermal-80 .summary,body.thermal-58 .summary{width:100%;font-size:9px}
+  body.thermal-80 .summary .grand{font-size:12px} body.thermal-58 .summary .grand{font-size:11px}
+  body.thermal-80 .info-card,body.thermal-58 .info-card{border:0;padding:2px 0}
+  body.thermal-80 .footer,body.thermal-58 .footer{font-size:7px;margin-top:10px;padding-top:4px}
+}
+@page thermal80{size:80mm auto;margin:0} @page thermal58{size:58mm auto;margin:0}
+body.thermal-80{page:thermal80} body.thermal-58{page:thermal58}
 </style>
 </head>
-<body>
+<body class="${printClass}">
 <div class="invoice">
   <header class="header">
     <div class="brand">${logo}<div><h1>${escapeHtml(settings.siteName || 'فرنية صاج')}</h1><p>فاتورة طلب</p></div></div>

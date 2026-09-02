@@ -10,6 +10,7 @@ export default function Orders({data,refresh}){
   const [dateFilter,setDateFilter]=useState('all');
   const [specificDate,setSpecificDate]=useState('');
   const [history,setHistory]=useState(null);
+  const [printOrder,setPrintOrder]=useState(null);
   const historyPanelRef=useRef(null);
 
   useEffect(()=>{
@@ -64,8 +65,8 @@ export default function Orders({data,refresh}){
       await refresh();
     }catch(err){alert(err.message||'تعذر تحديث الحالة');}
   };
-  const printInvoice=async order=>{
-    try{ await openInvoicePrint(order.id); }catch(err){ alert(err.message||'تعذر فتح الفاتورة'); }
+  const printInvoice=async (order,size)=>{
+    try{ await openInvoicePrint(order.id,size); setPrintOrder(null); }catch(err){ alert(err.message||'تعذر فتح الفاتورة'); }
   };
   const openHistory=async order=>{
     try{
@@ -90,9 +91,10 @@ export default function Orders({data,refresh}){
         <td><div className="order-total-values"><b>{money(o.total,data.settings.currency)}</b><small>{moneyInWords(o.total,data.settings.currency)}</small></div></td>
         <td><select className={`status-select status-${o.status||'new'}`} value={o.status||'new'} onChange={e=>statusChanged(o.id,e.target.value)}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></td>
         <td><button className="icon-btn history-btn" title="سجل تغييرات الطلب" onClick={()=>openHistory(o)}><Clock size={16}/></button></td>
-        <td>{o.whatsapp_sent?'✓ أُرسلت':'—'}</td><td>{o.status==='delivered'?<button className="icon-btn invoice-btn" title="طباعة الفاتورة" onClick={()=>printInvoice(o)}><Printer size={16}/></button>:'—'}</td>
+        <td>{o.whatsapp_sent?'✓ أُرسلت':'—'}</td><td>{o.status==='delivered'?<button className="icon-btn invoice-btn" title="طباعة الفاتورة" onClick={()=>setPrintOrder(o)}><Printer size={16}/></button>:'—'}</td>
       </tr>)}
     </tbody></table></div>
+    {printOrder&&<div className="modal-bg print-size-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setPrintOrder(null)}}><div className="modal print-size-modal" role="dialog" aria-modal="true" aria-labelledby="print-size-title"><button className="close" onClick={()=>setPrintOrder(null)}><X/></button><span className="eyebrow">طباعة الفاتورة</span><h2 id="print-size-title">اختر حجم الطباعة</h2><p className="muted">الطلب #{printOrder.id}</p><div className="print-size-options"><button onClick={()=>printInvoice(printOrder,'A4')}><strong>A4</strong><span>فاتورة ورقية عادية</span></button><button onClick={()=>printInvoice(printOrder,'80mm')}><strong>80mm</strong><span>طابعة حرارية للمطاعم</span></button><button onClick={()=>printInvoice(printOrder,'58mm')}><strong>58mm</strong><span>طابعة حرارية صغيرة</span></button></div></div></div>}
     {history&&<div ref={historyPanelRef} id="order-history-panel" className="order-history-panel">
       <div className="order-history-head"><div><span className="eyebrow">سجل الطلب</span><h3>الطلب #{history.order.id}</h3></div><button className="icon-btn" onClick={()=>setHistory(null)} title="إغلاق"><X size={17}/></button></div>
       {history.history.length===0?<p className="muted">لا يوجد سجل تغييرات لهذا الطلب حتى الآن.</p>:<div className="order-history-list">{history.history.map(h=><div className="order-history-entry" key={h.id}><div className={`history-status-dot status-${h.new_status}`}></div><div><b>{statuses[h.old_status]||h.old_status} → {statuses[h.new_status]||h.new_status}</b><small>{h.changed_by_name||'الإدارة'} · {new Date(h.changed_at).toLocaleString('ar-LB',{timeZone:'Asia/Beirut'})}</small></div></div>)}</div>}
