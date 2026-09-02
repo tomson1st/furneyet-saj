@@ -1,0 +1,1 @@
+export default function SideButton({icon,label,badge=0,active,onClick,show}){return show&&<button className={active?'side active':'side'} onClick={onClick}>{icon}<span className="side-label">{label}</span>{badge>0&&<em className="nav-badge" aria-label={`${badge} طلب جديد`}>{badge>99?'99+':badge}</em>}</button>}

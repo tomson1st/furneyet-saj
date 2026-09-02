@@ -1,0 +1,1 @@
+export default function Footer({settings}){return <footer id="contact"><b>{settings.siteName}</b><span>{settings.tagline}</span><small>© {new Date().getFullYear()} جميع الحقوق محفوظة</small></footer>}

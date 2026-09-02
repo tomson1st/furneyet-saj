@@ -1,0 +1,7 @@
+import React,{useState} from 'react';
+import {Plus,Edit3} from 'lucide-react';
+import {api} from '../../lib/utils';
+import {useProgress} from '../../context/ProgressContext';
+import UserEditor from './UserEditor';
+import {perms} from './perms';
+export default function UsersPanel({data,refresh,canAddAdmin}){const {run}=useProgress();const [editing,setEditing]=useState(null);const save=async f=>{try{await run(f.id?'جاري حفظ تعديل المستخدم…':'جاري إضافة المستخدم…',()=>api('/admin/users'+(f.id?'/'+f.id:''),{method:f.id?'PUT':'POST',body:JSON.stringify(f)}));setEditing(null);await refresh()}catch(e){throw e}};return <section className="panel"><div className="toolbar"><span>يمكنك تحديد الصلاحيات لكل موظف.</span><button className="btn primary" onClick={()=>setEditing({name:'',email:'',password:'',role:'staff',permissions:['RECEIVE_ORDERS'],active:true})}><Plus/> مستخدم جديد</button></div>{editing&&<UserEditor value={editing} canAddAdmin={canAddAdmin} onCancel={()=>setEditing(null)} onSave={save}/>}<div className="user-list">{data.users.map(u=><div className="user-card" key={u.id}><div className="avatar">{u.name?.[0]||'م'}</div><div><b>{u.name}</b><span>{u.email}</span><small>{u.role==='admin'?'مدير كامل':u.permissions.map(p=>perms.find(x=>x[0]===p)?.[1]).filter(Boolean).join(' • ')}</small></div><div className="user-actions"><span className={u.active?'active-text':'muted'}>{u.active?'فعال':'موقوف'}</span><button className="icon-btn" onClick={()=>setEditing({...u,password:''})}><Edit3 size={17}/></button></div></div>)}</div></section>}

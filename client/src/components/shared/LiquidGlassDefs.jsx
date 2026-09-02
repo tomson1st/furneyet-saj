@@ -1,0 +1,1 @@
+export default function LiquidGlassDefs(){return <svg className="liquid-glass-defs" width="0" height="0" aria-hidden="true"><defs><filter id="liquidGlass"><feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2" seed="2" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="18" xChannelSelector="R" yChannelSelector="G"/></filter></defs></svg>}
