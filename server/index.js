@@ -400,7 +400,24 @@ app.get('/api/customer/orders',customerAuth,async(req,res,next)=>{try{const q=aw
 app.post('/api/customer/reorder/:id',customerAuth,async(req,res,next)=>{try{const q=await query('SELECT items_json FROM orders WHERE id=$1 AND customer_user_id=$2',[req.params.id,req.customer.id]);if(!q.rows[0])return res.status(404).json({error:'الطلب غير موجود'});res.json({items:JSON.parse(q.rows[0].items_json)})}catch(e){next(e)}});
 app.post('/api/customer/reviews',customerAuth,requireCustomerCsrf,async(req,res,next)=>{try{const id=Number(req.body?.orderId),rating=Number(req.body?.rating),comment=String(req.body?.comment||'').trim();const q=await query("SELECT id FROM orders WHERE id=$1 AND customer_user_id=$2 AND status='delivered'",[id,req.customer.id]);if(!q.rows[0]||rating<1||rating>5)return res.status(400).json({error:'لا يمكن تقييم هذا الطلب'});await query('INSERT INTO order_reviews(order_id,customer_user_id,rating,comment) VALUES($1,$2,$3,$4) ON CONFLICT(order_id) DO UPDATE SET rating=EXCLUDED.rating,comment=EXCLUDED.comment',[id,req.customer.id,rating,comment]);res.json({ok:true})}catch(e){next(e)}});
 app.get('/api/public/delivery-zones',async(req,res,next)=>{try{const q=await query('SELECT id,name,fee,min_order FROM delivery_zones WHERE active=true ORDER BY sort_order,id');res.json({zones:q.rows})}catch(e){next(e)}});
-app.post('/api/public/coupon/validate',async(req,res,next)=>{try{const code=String(req.body?.code||'').trim().toUpperCase(),subtotal=Number(req.body?.subtotal||0),q=await query('SELECT * FROM coupons WHERE code=$1 AND active=true',[code]),c=q.rows[0],now=new Date();if(!c||c.starts_at&&new Date(c.starts_at)>now||c.ends_at&&new Date(c.ends_at)<now||c.max_uses!=null&&c.used_count>=c.max_uses)return res.status(400).json({error:'رمز الخصم غير صالح أو منتهي'});if(subtotal<Number(c.min_order))return res.status(400).json({error:'الحد الأدنى للطلب غير متحقق'});const discount=c.type==='percent'?Math.min(subtotal,subtotal*Number(c.value)/100):Math.min(subtotal,Number(c.value));res.json({code,discount,total:subtotal-discount})}catch(e){next(e)}});
+app.post('/api/public/coupon/validate',async(req,res,next)=>{try{
+  const code=String(req.body?.code||'').trim().toUpperCase();
+  const subtotal=Number(req.body?.subtotal);
+  if(!code)return res.status(400).json({error:'يرجى إدخال كود الخصم'});
+  if(!Number.isFinite(subtotal)||subtotal<=0)return res.status(400).json({error:'قيمة السلة غير صالحة لتطبيق الخصم'});
+  const q=await query('SELECT * FROM coupons WHERE UPPER(TRIM(code))=$1 AND active=true LIMIT 1',[code]);
+  const c=q.rows[0],now=Date.now();
+  if(!c)return res.status(400).json({error:'رمز الخصم غير موجود أو غير فعال'});
+  if(c.starts_at){const startsAt=new Date(c.starts_at).getTime();if(Number.isFinite(startsAt)&&startsAt>now)return res.status(400).json({error:'كود الخصم لم يبدأ بعد'});}
+  if(c.ends_at){const endsAt=new Date(c.ends_at).getTime();if(Number.isFinite(endsAt)&&endsAt<now)return res.status(400).json({error:'انتهت صلاحية كود الخصم'});}
+  if(c.max_uses!=null&&Number(c.used_count)>=Number(c.max_uses))return res.status(400).json({error:'تم الوصول إلى الحد الأقصى لاستخدام كود الخصم'});
+  const minOrder=Number(c.min_order||0);
+  if(!Number.isFinite(minOrder))return res.status(400).json({error:'إعداد الحد الأدنى لكود الخصم غير صالح'});
+  if(subtotal<minOrder)return res.status(400).json({error:`الحد الأدنى للطلب لتطبيق هذا الكود هو ${minOrder.toLocaleString('ar-LB')}`});
+  const value=Number(c.value||0);
+  const discount=c.type==='percent'?Math.min(subtotal,subtotal*value/100):Math.min(subtotal,value);
+  res.json({code,discount,total:subtotal-discount,message:'تم تطبيق الخصم'});
+}catch(e){next(e)}});
 // Upload an item/offer image to Supabase Storage.
 // Images are sent as a data URL from the admin UI; the server keeps the
 // Supabase service-role key private and returns only the public image URL.

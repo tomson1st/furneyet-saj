@@ -4427,3 +4427,17 @@ nav a svg,
 .loyalty-rules-summary b{font-size:11px;color:var(--primary)}
 .loyalty-rules-summary span{font-size:11px;color:var(--text);line-height:1.7}
 @media(max-width:700px){.loyalty-rules-summary{grid-template-columns:1fr}.loyalty-marketing-section{padding:15px}}
+
+/* Mobile drawer click reliability: the drawer must always receive pointer events above its backdrop. */
+@media (max-width: 850px) {
+  .nav > nav.mobile-nav-open { pointer-events: auto !important; }
+  .nav > nav.mobile-nav-open a,
+  .nav > nav.mobile-nav-open .nav-link-button { pointer-events: auto !important; position: relative; z-index: 1; }
+  .mobile-nav-backdrop { z-index: 40 !important; }
+  .nav > nav.mobile-nav-open { z-index: 41 !important; }
+  .admin-drawer-backdrop { z-index: 100 !important; }
+  .admin.mobile-menu-open aside { z-index: 102 !important; pointer-events: auto !important; }
+  .admin-mobile-menu-toggle { z-index: 103 !important; }
+  .admin aside .side,
+  .admin aside .logout { pointer-events: auto !important; position: relative; z-index: 1; }
+}
