@@ -82,3 +82,8 @@ npm start
 - Compact news ticker now displays each item name with its short description when available.
 - Made the customer home search bar sticky while scrolling, so users can start a new search without returning to the top.
 - Preserved responsive behavior for desktop, tablet, and mobile layouts.
+
+## Latest changes
+- Added restaurant address and geographic coordinates to site settings.
+- Added interactive OpenStreetMap/Leaflet location picker with click/drag marker.
+- Added address, phone, and map link to the customer home footer.

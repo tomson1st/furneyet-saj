@@ -27,6 +27,9 @@ const settingDefaults = {
   tagline: 'مناقيش صاج طازة على كيفك',
   logoUrl: '',
   phone: '',
+  address: '',
+  latitude: '33.8938',
+  longitude: '35.5018',
   currency: 'ل.ل',
   primary: '#9a3412',
   secondary: '#f59e0b',
@@ -179,7 +182,7 @@ async function seed() {
 }
 
 const PUBLIC_SETTING_KEYS = new Set([
-  'siteName','tagline','logoUrl','phone','currency',
+  'siteName','tagline','logoUrl','phone','address','latitude','longitude','currency',
   'primary','secondary','background','theme','whatsappEnabled','whatsappRecipient',
   'loyaltyEnabled','loyaltyEarnAmount','loyaltyPointValue','loyaltyMinRedeem','loyaltyMaxRedeemPercent'
 ]);
@@ -921,7 +924,7 @@ app.put('/api/admin/settings', auth, requireCsrf, requirePerm('MANAGE_SETTINGS')
     if (invalid) return res.status(400).json({ error: `إعداد غير مسموح: ${invalid}` });
 
     const limits = {
-      siteName: 100, tagline: 200, logoUrl: 2000, phone: 40, currency: 20,
+      siteName: 100, tagline: 200, logoUrl: 2000, phone: 40, address: 300, latitude: 30, longitude: 30, currency: 20,
       primary: 20, secondary: 20, background: 20, theme: 30, whatsappEnabled: 10, whatsappRecipient: 40,
       loyaltyEnabled: 10, loyaltyEarnAmount: 20, loyaltyPointValue: 20, loyaltyMinRedeem: 20, loyaltyMaxRedeemPercent: 20
     };
@@ -933,6 +936,11 @@ app.put('/api/admin/settings', auth, requireCsrf, requirePerm('MANAGE_SETTINGS')
       }
       if (k === 'theme' && !ALLOWED_THEMES.has(value)) {
         return res.status(400).json({ error: 'الثيم غير صالح' });
+      }
+      if (['latitude','longitude'].includes(k)) {
+        const n = Number(value);
+        const valid = Number.isFinite(n) && (k === 'latitude' ? n >= -90 && n <= 90 : n >= -180 && n <= 180);
+        if (!valid) return res.status(400).json({ error: `الإحداثيات غير صالحة للإعداد «${k}»` });
       }
       if (['loyaltyEarnAmount','loyaltyPointValue','loyaltyMinRedeem','loyaltyMaxRedeemPercent'].includes(k)) {
         const n = Number(value);
