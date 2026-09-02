@@ -4196,6 +4196,9 @@ nav a svg,
 }
 
 @media (max-width: 850px) {
+  /* Keep the sticky header stacking context above the backdrop so the drawer can receive clicks. */
+  header.mobile-menu-active { z-index: 42 !important; }
+
   /* Customer header: keep cart and burger on the physical left side. */
   .mobile-menu-toggle {
     display: inline-flex;
