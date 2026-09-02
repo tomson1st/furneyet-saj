@@ -11,11 +11,17 @@ export default function PhoneOrders({data}){
   const zones=(data.zones||[]).filter(z=>z.active!==false); const currency=data.settings.currency;
   const categories=data.categories||[]; const items=data.items||[]; const offers=data.offers||[];
   const products=useMemo(()=>{
-    const seen=new Set();
+    const seenIds=new Set();
+    const seenNames=new Set();
     return [...items.map(x=>({...x,kind:'item'})),...offers.map(x=>({...x,name:x.title,kind:'offer'}))].filter(x=>{
-      const key=`${x.kind}:${Number(x.id)}`;
-      if(seen.has(key)) return false;
-      seen.add(key);
+      const idKey=`${x.kind}:${String(x.id)}`;
+      const nameKey=`${x.kind}:${String(x.name||'').trim().toLocaleLowerCase('ar')}`;
+      if(seenIds.has(idKey)) return false;
+      // Protect the phone-order search/list from duplicated API rows as well as duplicate IDs.
+      if(seenNames.has(nameKey)) return false;
+      seenIds.add(idKey);
+      if(nameKey.endsWith(':')) return true;
+      seenNames.add(nameKey);
       return true;
     });
   },[items,offers]);
