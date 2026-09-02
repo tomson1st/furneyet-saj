@@ -76,3 +76,9 @@ npm start
 - Invoice totals now include the amount written in Arabic words.
 - Numeric formatting across the client uses Latin/English digits (`ar-LB-u-nu-latn`) while preserving Arabic language/date formatting.
 - Invoice numeric values also use English digits.
+
+## Latest customer home refinements
+- Removed the logo displayed beside the compact news ticker on the customer home page.
+- Compact news ticker now displays each item name with its short description when available.
+- Made the customer home search bar sticky while scrolling, so users can start a new search without returning to the top.
+- Preserved responsive behavior for desktop, tablet, and mobile layouts.
