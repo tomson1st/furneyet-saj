@@ -3468,3 +3468,391 @@ nav a svg,
   pointer-events: none;
 }
 
+/* =========================================================
+   Liquid Glass refinement — readable content layer
+   Keep the glass effect, but give text enough contrast.
+   ========================================================= */
+.product-glass-body {
+  min-height: 46%;
+  padding: 13px 14px 12px;
+  justify-content: flex-end;
+  background: rgba(255, 255, 255, .30);
+  border: 1px solid rgba(255, 255, 255, .26);
+  border-top: 1px solid rgba(255, 255, 255, .42);
+  backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+  -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .42),
+    0 12px 32px rgba(0, 0, 0, .16);
+}
+.product-glass-body h3 {
+  color: #17120f;
+  text-shadow: 0 1px 2px rgba(255,255,255,.55);
+}
+.product-glass-body p,
+.product-glass-body .allergen-note {
+  color: #2f2823;
+  text-shadow: 0 1px 2px rgba(255,255,255,.45);
+}
+.product-glass-body .item-foot strong {
+  color: #17120f;
+  text-shadow: 0 1px 2px rgba(255,255,255,.55);
+}
+.product-glass-body::before,
+.admin-product-card .admin-product-info::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255,255,255,.20), transparent 48%);
+}
+
+/* Keep all card information anchored to the lower part of the image. */
+.product-glass-body > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Admin cards: stronger glass surface + readable white information. */
+.admin-product-card .admin-product-info {
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,.26);
+  border-color: rgba(255,255,255,.28);
+  -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+  backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.42),
+    0 15px 40px rgba(0,0,0,.20);
+}
+.admin-product-card .admin-product-info > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Search is an actual form: icon submits, clear resets, Enter searches. */
+.menu-search {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+}
+.menu-search .search-submit,
+.menu-search .search-clear {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: var(--text);
+}
+.menu-search .search-submit {
+  cursor: pointer;
+}
+.menu-search input {
+  min-width: 0;
+  cursor: text;
+}
+.menu-search .search-clear {
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .product-glass-body {
+    min-height: 50%;
+    padding: 10px 10px 9px;
+    background: rgba(255,255,255,.34);
+    backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+    -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+  }
+  .admin-product-card .admin-product-info {
+    left: 9px;
+    right: 9px;
+    bottom: 9px;
+    padding: 11px 12px;
+    background: rgba(255,255,255,.30);
+  }
+}
+
+/* =========================================================
+   FINAL LIQUID GLASS CARD FIX
+   Applied after legacy card rules so the glass layout cannot
+   be overridden by the older .menu-item-body/.popular-body rules.
+   ========================================================= */
+
+/* Product/item cards: image remains full-bleed and information is
+   always anchored to the lower edge of the card. */
+.product-glass-card .product-glass-body,
+.product-glass-card .menu-item-body.product-glass-body,
+.product-glass-card .popular-body.product-glass-body {
+  position: absolute !important;
+  right: 10px !important;
+  bottom: 10px !important;
+  left: 10px !important;
+  top: auto !important;
+  width: auto !important;
+  min-height: 0 !important;
+  max-height: 58% !important;
+  padding: 13px 14px 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  z-index: 5 !important;
+  overflow: hidden !important;
+  color: #17120f !important;
+  background: rgba(255,255,255,.34) !important;
+  border: 1px solid rgba(255,255,255,.42) !important;
+  border-radius: 16px !important;
+  backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.58),
+    0 12px 32px rgba(0,0,0,.18) !important;
+}
+
+.product-glass-card .product-glass-body::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,.28),
+    rgba(255,255,255,.08) 45%,
+    rgba(255,255,255,.18)
+  ) !important;
+}
+
+.product-glass-card .product-glass-body > * {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+.product-glass-card .product-glass-body h3,
+.product-glass-card .product-glass-body p,
+.product-glass-card .product-glass-body .allergen-note,
+.product-glass-card .product-glass-body .item-foot strong {
+  color: #17120f !important;
+  text-shadow: 0 1px 2px rgba(255,255,255,.65) !important;
+}
+
+.product-glass-card .product-glass-body p {
+  color: #342c26 !important;
+}
+
+/* Category cards: full image with the category name on a real
+   liquid-glass panel at the bottom. */
+.category-cards .category-card {
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 190px !important;
+  height: 190px !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255,255,255,.38) !important;
+  border-radius: 20px !important;
+  background: #f8f2e9 !important;
+  box-shadow: 0 8px 24px rgba(60,35,20,.10) !important;
+  isolation: isolate !important;
+}
+
+.category-cards .category-card img,
+.category-cards .category-card .category-placeholder {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  object-fit: cover !important;
+  border-radius: 0 !important;
+  z-index: 0 !important;
+}
+
+.category-cards .category-card::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 38% 0 0 !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+  background: linear-gradient(
+    180deg,
+    rgba(20,12,8,0),
+    rgba(20,12,8,.12) 25%,
+    rgba(20,12,8,.34) 100%
+  ) !important;
+}
+
+.category-cards .category-card b {
+  position: absolute !important;
+  right: 10px !important;
+  bottom: 10px !important;
+  left: 10px !important;
+  z-index: 3 !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  color: #17120f !important;
+  text-align: right !important;
+  font-size: 16px !important;
+  line-height: 1.5 !important;
+  border: 1px solid rgba(255,255,255,.42) !important;
+  border-radius: 16px !important;
+  background: rgba(255,255,255,.34) !important;
+  backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.58),
+    0 12px 32px rgba(0,0,0,.16) !important;
+  text-shadow: 0 1px 2px rgba(255,255,255,.65) !important;
+}
+
+/* Offers: the offer image fills the card and the content becomes a
+   readable liquid-glass panel at the bottom. */
+.featured-offer {
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 300px !important;
+  border: 1px solid rgba(255,255,255,.34) !important;
+  background: #f8f2e9 !important;
+  box-shadow: 0 8px 24px rgba(60,35,20,.10) !important;
+}
+
+.featured-offer::after {
+  background: linear-gradient(
+    180deg,
+    rgba(18,12,8,0) 28%,
+    rgba(18,12,8,.08) 48%,
+    rgba(18,12,8,.38) 100%
+  ) !important;
+}
+
+.featured-offer .featured-offer-content {
+  position: absolute !important;
+  right: 12px !important;
+  bottom: 12px !important;
+  left: 12px !important;
+  top: auto !important;
+  transform: none !important;
+  width: auto !important;
+  z-index: 4 !important;
+  padding: 14px 16px !important;
+  color: #17120f !important;
+  background: rgba(255,255,255,.34) !important;
+  border: 1px solid rgba(255,255,255,.42) !important;
+  border-radius: 16px !important;
+  backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.58),
+    0 15px 40px rgba(0,0,0,.18) !important;
+  overflow: hidden !important;
+}
+
+.featured-offer .featured-offer-content::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,.28),
+    rgba(255,255,255,.08) 48%,
+    rgba(255,255,255,.18)
+  ) !important;
+}
+
+.featured-offer .featured-offer-content > * {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+.featured-offer .featured-offer-content h3,
+.featured-offer .featured-offer-content p,
+.featured-offer .featured-offer-content strong {
+  color: #17120f !important;
+  text-shadow: 0 1px 2px rgba(255,255,255,.65) !important;
+}
+
+.featured-offer .featured-offer-content p {
+  color: #342c26 !important;
+  opacity: 1 !important;
+}
+
+/* Admin item/offer cards: keep their information panel firmly at the
+   bottom and use the same glass language as the customer cards. */
+.admin-product-card .admin-product-info {
+  position: absolute !important;
+  right: 10px !important;
+  bottom: 10px !important;
+  left: 10px !important;
+  top: auto !important;
+  z-index: 5 !important;
+  background: rgba(255,255,255,.34) !important;
+  border: 1px solid rgba(255,255,255,.42) !important;
+  border-radius: 16px !important;
+  backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.58), 0 15px 40px rgba(0,0,0,.18) !important;
+}
+
+.admin-product-card .admin-product-info::before {
+  z-index: 0 !important;
+  background: linear-gradient(135deg, rgba(255,255,255,.28), rgba(255,255,255,.08) 48%, rgba(255,255,255,.18)) !important;
+}
+
+.admin-product-card .admin-product-info > * {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+@media (max-width: 560px) {
+  .product-glass-card .product-glass-body {
+    right: 8px !important;
+    bottom: 8px !important;
+    left: 8px !important;
+    max-height: 60% !important;
+    padding: 10px 11px 9px !important;
+    border-radius: 14px !important;
+    background: rgba(255,255,255,.38) !important;
+  }
+
+  .category-cards .category-card {
+    min-height: 165px !important;
+    height: 165px !important;
+  }
+
+  .category-cards .category-card b {
+    right: 8px !important;
+    bottom: 8px !important;
+    left: 8px !important;
+    padding: 10px 11px !important;
+    border-radius: 14px !important;
+    background: rgba(255,255,255,.38) !important;
+  }
+
+  .featured-offer {
+    min-height: 260px !important;
+  }
+
+  .featured-offer .featured-offer-content {
+    right: 9px !important;
+    bottom: 9px !important;
+    left: 9px !important;
+    padding: 11px 12px !important;
+    border-radius: 14px !important;
+    background: rgba(255,255,255,.38) !important;
+  }
+
+  .admin-product-card .admin-product-info {
+    right: 8px !important;
+    bottom: 8px !important;
+    left: 8px !important;
+    padding: 11px 12px !important;
+    border-radius: 14px !important;
+    background: rgba(255,255,255,.38) !important;
+  }
+}
+
