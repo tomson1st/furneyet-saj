@@ -4417,3 +4417,13 @@ nav a svg,
     transition: none;
   }
 }
+
+/* Marketing loyalty settings */
+.loyalty-marketing-section{margin-bottom:18px;padding:20px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.72),rgba(255,250,243,.72));}
+.marketing-section-description{margin:-4px 0 16px;color:var(--muted);font-size:12px;line-height:1.8}
+.marketing-loyalty-grid{margin-bottom:14px}
+.loyalty-rules-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 14px}
+.loyalty-rules-summary>div{padding:12px 14px;border-radius:15px;background:var(--primary-soft);border:1px solid color-mix(in srgb,var(--primary) 10%,transparent);display:grid;gap:4px}
+.loyalty-rules-summary b{font-size:11px;color:var(--primary)}
+.loyalty-rules-summary span{font-size:11px;color:var(--text);line-height:1.7}
+@media(max-width:700px){.loyalty-rules-summary{grid-template-columns:1fr}.loyalty-marketing-section{padding:15px}}

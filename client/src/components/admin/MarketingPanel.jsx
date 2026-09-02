@@ -11,6 +11,7 @@ export default function MarketingPanel({data,refresh}){
   const [editingCoupon,setEditingCoupon]=useState(null);
   const [editingZone,setEditingZone]=useState(null);
   const [error,setError]=useState('');
+  const [loyalty,setLoyalty]=useState({loyaltyEnabled:data.settings?.loyaltyEnabled??'true',loyaltyEarnAmount:data.settings?.loyaltyEarnAmount??10000,loyaltyPointValue:data.settings?.loyaltyPointValue??1000,loyaltyMinRedeem:data.settings?.loyaltyMinRedeem??10,loyaltyMaxRedeemPercent:data.settings?.loyaltyMaxRedeemPercent??50});
   const formatDate=v=>v?new Date(v).toLocaleDateString('ar-LB',{year:'numeric',month:'short',day:'numeric'}):'—';
   const resetCoupon=()=>{setCoupon(emptyCoupon);setEditingCoupon(null)};
   const resetZone=()=>{setZone(emptyZone);setEditingZone(null)};
@@ -33,10 +34,33 @@ export default function MarketingPanel({data,refresh}){
     }catch(e){setError(e.message)}
   };
   const startZoneEdit=z=>{setEditingZone(z);setZone({name:z.name||'',fee:String(z.fee??''),min_order:String(z.min_order??''),active:z.active!==false,sort_order:Number(z.sort_order||0)})};
+
+  const saveLoyalty=async()=>{
+    setError('');
+    try{
+      const settings={...data.settings,...loyalty};
+      await run('جاري حفظ إعدادات برنامج الولاء…',()=>api('/admin/settings',{method:'PUT',body:JSON.stringify(settings)}));
+      await refresh();
+    }catch(e){setError(e.message)}
+  };
   const deleteCoupon=async c=>{if(!confirm(`حذف كود الخصم «${c.code}»؟`))return;setError('');try{await run('جاري حذف كود الخصم…',()=>api(`/admin/coupons/${c.id}`,{method:'DELETE'}));if(editingCoupon?.id===c.id)resetCoupon();await refresh()}catch(e){setError(e.message)}};
   const deleteZone=async z=>{if(!confirm(`حذف منطقة التوصيل «${z.name}»؟`))return;setError('');try{await run('جاري حذف منطقة التوصيل…',()=>api(`/admin/zones/${z.id}`,{method:'DELETE'}));if(editingZone?.id===z.id)resetZone();await refresh()}catch(e){setError(e.message)}};
   return <section className="panel marketing-panel">
     {error&&<div className="user-form-error">{error}</div>}
+    <div className="marketing-section loyalty-marketing-section">
+      <div className="marketing-section-head"><div><span className="eyebrow">التسويق</span><h2><Gift size={18}/> برنامج الولاء</h2></div><span className={`status-pill ${String(loyalty.loyaltyEnabled)!=='false'?'active':'inactive'}`}>{String(loyalty.loyaltyEnabled)!=='false'?'فعال':'متوقف'}</span></div>
+      <p className="marketing-section-description">حدد طريقة كسب النقاط وقيمتها وقواعد استخدامها عند إتمام الطلبات.</p>
+      <div className="loyalty-admin-grid marketing-loyalty-grid">
+        <label><span>حالة البرنامج</span><select value={String(loyalty.loyaltyEnabled)} onChange={e=>setLoyalty({...loyalty,loyaltyEnabled:e.target.value})}><option value="true">فعال</option><option value="false">متوقف</option></select></label>
+        <label><span>كل مبلغ (ل.ل) يمنح نقطة</span><input type="number" min="1" step="1" value={loyalty.loyaltyEarnAmount} onChange={e=>setLoyalty({...loyalty,loyaltyEarnAmount:e.target.value})}/></label>
+        <label><span>قيمة النقطة ({data.settings?.currency||'ل.ل'})</span><input type="number" min="1" step="1" value={loyalty.loyaltyPointValue} onChange={e=>setLoyalty({...loyalty,loyaltyPointValue:e.target.value})}/></label>
+        <label><span>الحد الأدنى للاستبدال</span><input type="number" min="0" step="1" value={loyalty.loyaltyMinRedeem} onChange={e=>setLoyalty({...loyalty,loyaltyMinRedeem:e.target.value})}/></label>
+        <label><span>أقصى نسبة من قيمة المنتجات</span><input type="number" min="0" max="100" step="1" value={loyalty.loyaltyMaxRedeemPercent} onChange={e=>setLoyalty({...loyalty,loyaltyMaxRedeemPercent:e.target.value})}/></label>
+      </div>
+      <div className="loyalty-rules-summary"><div><b>الكسب</b><span>نقطة لكل {Number(loyalty.loyaltyEarnAmount||0).toLocaleString('ar-LB')} ل.ل</span></div><div><b>القيمة</b><span>كل نقطة = {Number(loyalty.loyaltyPointValue||0).toLocaleString('ar-LB')} {data.settings?.currency||'ل.ل'}</span></div><div><b>الاستخدام</b><span>حتى {Number(loyalty.loyaltyMaxRedeemPercent||0)}% من قيمة المنتجات</span></div></div>
+      <p className="settings-help">تُمنح النقاط بعد تسليم الطلب، ويمكن للزبون استخدامها وفق الحدود المحددة أعلاه.</p>
+      <button type="button" className="btn primary" onClick={saveLoyalty}>حفظ إعدادات برنامج الولاء</button>
+    </div>
     <div className="phase2-grid">
       <div className="marketing-section">
         <div className="marketing-section-head"><div><span className="eyebrow">التسويق</span><h2><Gift size={18}/> كوبونات الخصم</h2></div>{editingCoupon&&<button type="button" className="btn ghost compact-action" onClick={resetCoupon}><X size={15}/> إلغاء التعديل</button>}</div>
