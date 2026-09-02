@@ -166,7 +166,82 @@ function Login({onLogin}){const {run}=useProgress();const [email,setEmail]=useSt
 const perms=[['MANAGE_ITEMS','إدارة الأصناف والتصنيفات والعروض'],['RECEIVE_ORDERS','استقبال وإدارة الطلبات'],['MANAGE_SETTINGS','إدارة الموقع والثيم'],['MANAGE_USERS','إدارة مستخدمي الإدارة'],['ADD_ADMIN','إضافة مدير']];
 function Admin(){const [data,setData]=useState(null),[tab,setTab]=useState('orders'),[me,setMe]=useState(null),[newOrderNotice,setNewOrderNotice]=useState(null);const previousOrderIds=useRef(null);const noticeTimer=useRef(null);const load=async({notify=true}={})=>{try{const next=await api('/admin/data');const currentOrders=Array.isArray(next.orders)?next.orders:[];if(notify&&previousOrderIds.current){const previous=previousOrderIds.current;const added=currentOrders.find(o=>!previous.has(Number(o.id)));if(added){setNewOrderNotice(added);if(noticeTimer.current)clearTimeout(noticeTimer.current);noticeTimer.current=setTimeout(()=>setNewOrderNotice(null),6000)}}previousOrderIds.current=new Set(currentOrders.map(o=>Number(o.id)));setData(next)}catch(e){location.reload()}};useEffect(()=>{let active=true;api('/auth/me').then(x=>{if(active)setMe(x.user)}).catch(()=>{});load({notify:false});const timer=setInterval(()=>load({notify:true}),10000);return()=>{active=false;clearInterval(timer);if(noticeTimer.current)clearTimeout(noticeTimer.current)}} ,[]);if(!data)return <div className="loader">جاري تحميل الإدارة…</div>;const can=p=>me?.role==='admin'||me?.permissions?.includes(p);const newOrdersCount=data.orders.filter(o=>o.status==='new').length;return <div className="admin">{newOrderNotice&&<div className="new-order-toast" role="alert"><div className="new-order-toast-icon"><Bell size={20}/></div><div><b>طلب جديد #{newOrderNotice.id}</b><span>{newOrderNotice.customer_name||'زبون جديد'} — {money(newOrderNotice.total,data.settings.currency)}</span><small>{moneyInWords(newOrderNotice.total,data.settings.currency)}</small></div><button type="button" onClick={()=>{setTab('orders');setNewOrderNotice(null)}}>عرض الطلب</button></div>}<aside><div className="admin-brand"><span className="logo-mark">ف</span><div><b>فرنية صاج</b><small>لوحة الإدارة</small></div></div><div className="admin-nav"><SideButton icon={<ClipboardList/>} label="الطلبات" badge={newOrdersCount} active={tab==='orders'} onClick={()=>setTab('orders')} show={can('RECEIVE_ORDERS')}/><SideButton icon={<Tags/>} label="الأصناف والتصنيفات" active={tab==='items'} onClick={()=>setTab('items')} show={can('MANAGE_ITEMS')}/><SideButton icon={<Palette/>} label="إدارة الموقع" active={tab==='settings'} onClick={()=>setTab('settings')} show={can('MANAGE_SETTINGS')}/><SideButton icon={<Gift/>} label="التوصيل والتسويق" active={tab==='marketing'} onClick={()=>setTab('marketing')} show={can('MANAGE_ITEMS')}/><SideButton icon={<BarChart3/>} label="الإحصاءات" active={tab==='analytics'} onClick={()=>setTab('analytics')} show={can('RECEIVE_ORDERS')}/><SideButton icon={<Users/>} label="المستخدمون" active={tab==='users'} onClick={()=>setTab('users')} show={can('MANAGE_USERS')}/></div><button className="logout" onClick={async()=>{try{await api('/auth/logout',{method:'POST'})}finally{location.reload()}}}><LogOut/> خروج</button></aside><main className="admin-main"><div className="admin-top"><div><span className="eyebrow">مرحباً {me?.name}</span><h1>{tab==='orders'?'الطلبات':tab==='items'?'الأصناف والتصنيفات والعروض':tab==='settings'?'إدارة الموقع':tab==='analytics'?'الإحصاءات':'مستخدمو الإدارة'}</h1></div><a className="view-site" href="/">مشاهدة الموقع ↗</a></div>{tab==='orders'&&<Orders data={data} refresh={()=>load({notify:false})}/>} {tab==='items'&&<Items data={data} refresh={()=>load({notify:false})}/>} {tab==='settings'&&<SettingsPanel data={data} refresh={()=>load({notify:false})}/>} {tab==='analytics'&&<AnalyticsPanel/>} {tab==='marketing'&&<MarketingPanel data={data} refresh={()=>load({notify:false})}/>} {tab==='users'&&<UsersPanel data={data} refresh={()=>load({notify:false})} canAddAdmin={can('ADD_ADMIN')}/>}</main></div>}
 function AnalyticsPanel(){const {run}=useProgress();const [d,setD]=useState(null);useEffect(()=>{run('جاري تحميل الإحصاءات…',()=>api('/admin/analytics')).then(setD).catch(()=>{})},[]);if(!d)return <section className="panel"><div className="loader">جاري تحميل الإحصاءات…</div></section>;return <section className="panel analytics-panel"><div className="analytics-cards"><div><span>الطلبات</span><b>{d.summary.orders}</b></div><div><span>الإيرادات</span><b>{money(d.summary.revenue)}</b></div><div><span>المسلّمة</span><b>{d.summary.delivered}</b></div><div><span>متوسط الطلب</span><b>{money(d.summary.avg_order)}</b></div></div><h2>الأكثر مبيعاً</h2>{d.bestsellers.map(x=><div className="bar-row" key={x.name}><span>{x.name}</span><b>{x.quantity}</b></div>)}<a className="btn ghost" href="/api/admin/orders/export.csv"><Download size={16}/> تصدير الطلبات CSV</a></section>}
-function MarketingPanel({data,refresh}){const {run}=useProgress();const [coupon,setCoupon]=useState({code:'',type:'fixed',value:'',min_order:'',max_uses:'',active:true});const [zone,setZone]=useState({name:'',fee:'',min_order:'',active:true});const saveCoupon=async()=>{try{await run('جاري حفظ الكوبون…',()=>api('/admin/coupons',{method:'POST',body:JSON.stringify(coupon)}));setCoupon({code:'',type:'fixed',value:'',min_order:'',max_uses:'',active:true});await refresh()}catch(e){alert(e.message)}};const saveZone=async()=>{try{await run('جاري حفظ منطقة التوصيل…',()=>api('/admin/zones',{method:'POST',body:JSON.stringify(zone)}));setZone({name:'',fee:'',min_order:'',active:true});await refresh()}catch(e){alert(e.message)}};return <section className="panel"><div className="phase2-grid"><div><h2><Gift size={18}/> كوبونات الخصم</h2><div className="inline-form"><input placeholder="CODE" value={coupon.code} onChange={e=>setCoupon({...coupon,code:e.target.value.toUpperCase()})}/><select value={coupon.type} onChange={e=>setCoupon({...coupon,type:e.target.value})}><option value="fixed">مبلغ ثابت</option><option value="percent">نسبة %</option></select><input type="number" placeholder="القيمة" value={coupon.value} onChange={e=>setCoupon({...coupon,value:e.target.value})}/><input type="number" placeholder="الحد الأدنى" value={coupon.min_order} onChange={e=>setCoupon({...coupon,min_order:e.target.value})}/><input type="number" placeholder="عدد الاستخدامات" value={coupon.max_uses} onChange={e=>setCoupon({...coupon,max_uses:e.target.value})}/><button className="btn primary" onClick={saveCoupon}>إضافة</button></div><div className="simple-list">{data.coupons?.map(c=><div key={c.id}><b>{c.code}</b><span>{c.type==='percent'?`${c.value}%`:money(c.value)}</span><small>{c.used_count||0} استخدام</small></div>)}</div></div><div><h2><MapPinned size={18}/> مناطق التوصيل</h2><div className="inline-form"><input placeholder="اسم المنطقة" value={zone.name} onChange={e=>setZone({...zone,name:e.target.value})}/><input type="number" placeholder="رسم التوصيل" value={zone.fee} onChange={e=>setZone({...zone,fee:e.target.value})}/><input type="number" placeholder="الحد الأدنى" value={zone.min_order} onChange={e=>setZone({...zone,min_order:e.target.value})}/><button className="btn primary" onClick={saveZone}>إضافة</button></div><div className="simple-list">{data.zones?.map(z=><div key={z.id}><b>{z.name}</b><span>{money(z.fee)}</span><small>حد أدنى: {money(z.min_order)}</small></div>)}</div></div></div></section>}
+function MarketingPanel({data,refresh}){
+  const {run}=useProgress();
+  const emptyCoupon={code:'',type:'fixed',value:'',min_order:'',max_uses:'',active:true,starts_at:'',ends_at:''};
+  const emptyZone={name:'',fee:'',min_order:'',active:true,sort_order:0};
+  const [coupon,setCoupon]=useState(emptyCoupon);
+  const [zone,setZone]=useState(emptyZone);
+  const [editingCoupon,setEditingCoupon]=useState(null);
+  const [editingZone,setEditingZone]=useState(null);
+  const [error,setError]=useState('');
+  const formatDate=v=>v?new Date(v).toLocaleDateString('ar-LB',{year:'numeric',month:'short',day:'numeric'}):'—';
+  const resetCoupon=()=>{setCoupon(emptyCoupon);setEditingCoupon(null)};
+  const resetZone=()=>{setZone(emptyZone);setEditingZone(null)};
+  const saveCoupon=async()=>{
+    setError('');
+    try{
+      const editing=Boolean(editingCoupon);
+      await run(editing?'جاري حفظ تعديل الكوبون…':'جاري إضافة الكوبون…',()=>api(editing?`/admin/coupons/${editingCoupon.id}`:'/admin/coupons',{method:editing?'PUT':'POST',body:JSON.stringify({...coupon,max_uses:coupon.max_uses===''?null:coupon.max_uses})}));
+      resetCoupon();
+      await refresh();
+    }catch(e){setError(e.message)}
+  };
+  const saveZone=async()=>{
+    setError('');
+    try{
+      const editing=Boolean(editingZone);
+      await run(editing?'جاري حفظ تعديل المنطقة…':'جاري إضافة منطقة التوصيل…',()=>api(editing?`/admin/zones/${editingZone.id}`:'/admin/zones',{method:editing?'PUT':'POST',body:JSON.stringify(zone)}));
+      resetZone();
+      await refresh();
+    }catch(e){setError(e.message)}
+  };
+  const startZoneEdit=z=>{setEditingZone(z);setZone({name:z.name||'',fee:String(z.fee??''),min_order:String(z.min_order??''),active:z.active!==false,sort_order:Number(z.sort_order||0)})};
+  const deleteCoupon=async c=>{if(!confirm(`حذف كود الخصم «${c.code}»؟`))return;setError('');try{await run('جاري حذف كود الخصم…',()=>api(`/admin/coupons/${c.id}`,{method:'DELETE'}));if(editingCoupon?.id===c.id)resetCoupon();await refresh()}catch(e){setError(e.message)}};
+  const deleteZone=async z=>{if(!confirm(`حذف منطقة التوصيل «${z.name}»؟`))return;setError('');try{await run('جاري حذف منطقة التوصيل…',()=>api(`/admin/zones/${z.id}`,{method:'DELETE'}));if(editingZone?.id===z.id)resetZone();await refresh()}catch(e){setError(e.message)}};
+  return <section className="panel marketing-panel">
+    {error&&<div className="user-form-error">{error}</div>}
+    <div className="phase2-grid">
+      <div className="marketing-section">
+        <div className="marketing-section-head"><div><span className="eyebrow">التسويق</span><h2><Gift size={18}/> كوبونات الخصم</h2></div>{editingCoupon&&<button type="button" className="btn ghost compact-action" onClick={resetCoupon}><X size={15}/> إلغاء التعديل</button>}</div>
+        <div className="marketing-form-grid coupon-form-grid">
+          <input placeholder="كود الخصم" value={coupon.code} onChange={e=>setCoupon({...coupon,code:e.target.value.toUpperCase()})}/>
+          <select value={coupon.type} onChange={e=>setCoupon({...coupon,type:e.target.value})}><option value="fixed">مبلغ ثابت</option><option value="percent">نسبة %</option></select>
+          <input type="number" min="0" placeholder="القيمة" value={coupon.value} onChange={e=>setCoupon({...coupon,value:e.target.value})}/>
+          <input type="number" min="0" placeholder="الحد الأدنى للطلب" value={coupon.min_order} onChange={e=>setCoupon({...coupon,min_order:e.target.value})}/>
+          <input type="number" min="0" placeholder="أقصى عدد استخدامات" value={coupon.max_uses} onChange={e=>setCoupon({...coupon,max_uses:e.target.value})}/>
+          <label className="marketing-check"><input type="checkbox" checked={coupon.active} onChange={e=>setCoupon({...coupon,active:e.target.checked})}/><span>الكود فعال</span></label>
+          <label><span>يبدأ في</span><input type="datetime-local" value={coupon.starts_at||''} onChange={e=>setCoupon({...coupon,starts_at:e.target.value})}/></label>
+          <label><span>ينتهي في</span><input type="datetime-local" value={coupon.ends_at||''} onChange={e=>setCoupon({...coupon,ends_at:e.target.value})}/></label>
+        </div>
+        <div className="marketing-form-actions"><button type="button" className="btn primary" onClick={saveCoupon} disabled={!coupon.code.trim()}>{editingCoupon?<Edit3 size={16}/>:<Plus size={16}/>} {editingCoupon?'حفظ التعديل':'إضافة الكود'}</button>{editingCoupon&&<button type="button" className="btn ghost" onClick={resetCoupon}>كود جديد</button>}</div>
+        <div className="modern-table-wrap"><table className="modern-admin-table"><thead><tr><th>الكود</th><th>الخصم</th><th>الحد الأدنى</th><th>الاستخدام</th><th>الصلاحية</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>{(data.coupons||[]).length===0?<tr><td colSpan="7" className="table-empty">لا توجد أكواد خصم حتى الآن.</td></tr>:(data.coupons||[]).map(c=><tr key={c.id}>
+          <td><strong className="code-badge">{c.code}</strong></td>
+          <td><b>{c.type==='percent'?`${Number(c.value||0).toLocaleString('ar-LB')}%`:money(c.value,data.settings.currency)}</b></td>
+          <td>{money(c.min_order,data.settings.currency)}</td>
+          <td>{Number(c.used_count||0).toLocaleString('ar-LB')} / {c.max_uses==null?'∞':Number(c.max_uses).toLocaleString('ar-LB')}</td>
+          <td><small>{c.starts_at?formatDate(c.starts_at):'من الآن'}<br/>{c.ends_at?`حتى ${formatDate(c.ends_at)}`:'بدون انتهاء'}</small></td>
+          <td><span className={`status-pill ${c.active?'active':'inactive'}`}>{c.active?'فعال':'متوقف'}</span></td>
+          <td><div className="table-actions"><button type="button" className="icon-btn" title="تعديل" aria-label={`تعديل ${c.code}`} onClick={()=>{setEditingCoupon(c);setCoupon({code:c.code||'',type:c.type||'fixed',value:String(c.value??''),min_order:String(c.min_order??''),max_uses:c.max_uses==null?'':String(c.max_uses),active:c.active!==false,starts_at:c.starts_at?String(c.starts_at).slice(0,16):'',ends_at:c.ends_at?String(c.ends_at).slice(0,16):''})}}><Edit3 size={16}/></button><button type="button" className="icon-btn danger" title="حذف" aria-label={`حذف ${c.code}`} onClick={()=>deleteCoupon(c)}><Trash2 size={16}/></button></div></td>
+        </tr>)}</tbody></table></div>
+      </div>
+      <div className="marketing-section">
+        <div className="marketing-section-head"><div><span className="eyebrow">التوصيل</span><h2><MapPinned size={18}/> مناطق التوصيل</h2></div>{editingZone&&<button type="button" className="btn ghost compact-action" onClick={resetZone}><X size={15}/> إلغاء التعديل</button>}</div>
+        <div className="marketing-form-grid zone-form-grid">
+          <input placeholder="اسم المنطقة" value={zone.name} onChange={e=>setZone({...zone,name:e.target.value})}/>
+          <input type="number" min="0" placeholder="رسم التوصيل" value={zone.fee} onChange={e=>setZone({...zone,fee:e.target.value})}/>
+          <input type="number" min="0" placeholder="الحد الأدنى للطلب" value={zone.min_order} onChange={e=>setZone({...zone,min_order:e.target.value})}/>
+          <input type="number" placeholder="ترتيب الظهور" value={zone.sort_order} onChange={e=>setZone({...zone,sort_order:e.target.value})}/>
+          <label className="marketing-check"><input type="checkbox" checked={zone.active} onChange={e=>setZone({...zone,active:e.target.checked})}/><span>المنطقة فعالة</span></label>
+        </div>
+        <div className="marketing-form-actions"><button type="button" className="btn primary" onClick={saveZone} disabled={!zone.name.trim()}>{editingZone?<Edit3 size={16}/>:<Plus size={16}/>} {editingZone?'حفظ التعديل':'إضافة المنطقة'}</button>{editingZone&&<button type="button" className="btn ghost" onClick={resetZone}>منطقة جديدة</button>}</div>
+        <div className="modern-table-wrap"><table className="modern-admin-table"><thead><tr><th>المنطقة</th><th>رسم التوصيل</th><th>الحد الأدنى</th><th>الترتيب</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>{(data.zones||[]).length===0?<tr><td colSpan="6" className="table-empty">لا توجد مناطق توصيل حتى الآن.</td></tr>:(data.zones||[]).map(z=><tr key={z.id}>
+          <td><strong>{z.name}</strong></td><td>{money(z.fee,data.settings.currency)}</td><td>{money(z.min_order,data.settings.currency)}</td><td>{Number(z.sort_order||0).toLocaleString('ar-LB')}</td><td><span className={`status-pill ${z.active?'active':'inactive'}`}>{z.active?'فعالة':'متوقفة'}</span></td><td><div className="table-actions"><button type="button" className="icon-btn" title="تعديل" aria-label={`تعديل ${z.name}`} onClick={()=>startZoneEdit(z)}><Edit3 size={16}/></button><button type="button" className="icon-btn danger" title="حذف" aria-label={`حذف ${z.name}`} onClick={()=>deleteZone(z)}><Trash2 size={16}/></button></div></td>
+        </tr>)}</tbody></table></div>
+      </div>
+    </div>
+  </section>
+}
 function SideButton({icon,label,badge=0,active,onClick,show}){return show&&<button className={active?'side active':'side'} onClick={onClick}>{icon}<span className="side-label">{label}</span>{badge>0&&<em className="nav-badge" aria-label={`${badge} طلب جديد`}>{badge>99?'99+':badge}</em>}</button>}
 function Orders({data,refresh}){
   const {run}=useProgress();
