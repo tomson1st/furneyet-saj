@@ -4148,3 +4148,272 @@ nav a svg,
 .reset-requests-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.reset-requests-head h3{margin:4px 0 0}.reset-count{min-width:32px;height:32px;padding:0 9px;border-radius:999px;display:grid;place-items:center;background:var(--primary);color:#fff;font-weight:800}
 .reset-request{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid rgba(0,0,0,.07)}.reset-request-icon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#fff;color:var(--primary);flex:none}.reset-request-info{display:grid;gap:2px;flex:1;min-width:0}.reset-request-info b,.reset-request-info span,.reset-request-info small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reset-request-info span,.reset-request-info small{color:#6b7280}.reset-request-actions{display:flex;gap:6px;flex:none}.btn.small{padding:8px 11px;font-size:12px}.reset-link-box{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;margin:0 0 20px;border-radius:18px;background:#ecfdf5;border:1px solid #bbf7d0}.reset-link-box div{display:grid;gap:3px}.reset-link-box span{font-size:12px;color:#166534;line-height:1.6}.btn.danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}.customer-row-actions{display:flex;align-items:center;gap:5px}.icon-btn.danger{color:#b91c1c}.customer-detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 20px}
 @media(max-width:700px){.reset-card{padding:24px;border-radius:22px}.reset-request{align-items:flex-start;flex-wrap:wrap}.reset-request-info{min-width:calc(100% - 52px)}.reset-request-actions{width:100%;padding-right:50px}.reset-link-box{align-items:flex-start;flex-direction:column}.customer-row-actions{flex-wrap:wrap}}
+
+/* =========================================================
+   MOBILE NAVIGATION + CARD READABILITY
+   ========================================================= */
+.mobile-menu-toggle,
+.admin-mobile-menu-toggle,
+.mobile-nav-backdrop,
+.admin-drawer-backdrop {
+  display: none;
+}
+
+/* Browser-compatible frosted-glass fallback. SVG displacement is added
+   only when the browser explicitly supports it. */
+.product-glass-card .product-glass-body,
+.category-cards .category-card b,
+.featured-offer .featured-offer-content,
+.admin-product-card .admin-product-info {
+  background: rgba(255,255,255,.24) !important;
+  backdrop-filter: blur(12px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(135%) !important;
+}
+
+@supports (backdrop-filter: url("#liquidGlass")) {
+  .product-glass-card .product-glass-body,
+  .category-cards .category-card b,
+  .featured-offer .featured-offer-content,
+  .admin-product-card .admin-product-info {
+    backdrop-filter: url("#liquidGlass") blur(12px) saturate(180%) !important;
+    -webkit-backdrop-filter: url("#liquidGlass") blur(12px) saturate(180%) !important;
+  }
+}
+
+/* The information inside cards should remain clean and readable without
+   text shadows. */
+.product-glass-card .product-glass-body h3,
+.product-glass-card .product-glass-body p,
+.product-glass-card .product-glass-body .allergen-note,
+.product-glass-card .product-glass-body .item-foot strong,
+.category-cards .category-card b,
+.featured-offer .featured-offer-content h3,
+.featured-offer .featured-offer-content p,
+.featured-offer .featured-offer-content strong,
+.admin-product-card .admin-product-info,
+.admin-product-card .admin-product-info * {
+  text-shadow: none !important;
+}
+
+@media (max-width: 850px) {
+  /* Customer header: keep cart and burger on the physical left side. */
+  .mobile-menu-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    order: 5;
+    width: 42px;
+    height: 42px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    border: 0;
+    background: rgba(24,16,11,.30);
+    cursor: pointer;
+  }
+
+  .nav > nav.mobile-nav-open {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(300px, 82vw);
+    height: 100dvh;
+    z-index: 41;
+    margin: 0;
+    padding: 86px 18px 24px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 8px;
+    overflow-y: auto;
+    background: rgba(255,250,243,.96);
+    border-right: 1px solid var(--line);
+    box-shadow: 18px 0 45px rgba(40,25,15,.18);
+    animation: mobile-menu-slide-in .22s ease-out both;
+  }
+
+  .nav > nav.mobile-nav-open a,
+  .nav > nav.mobile-nav-open .nav-link-button {
+    width: 100%;
+    min-height: 48px;
+    padding: 11px 13px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    border-radius: 12px;
+    text-align: left;
+    color: var(--text);
+    background: transparent;
+  }
+
+  .nav > nav.mobile-nav-open a.active,
+  .nav > nav.mobile-nav-open .nav-link-button:hover,
+  .nav > nav.mobile-nav-open a:hover {
+    color: var(--primary);
+    background: rgba(154,52,18,.07);
+  }
+
+  .nav > nav.mobile-nav-open a.active::after,
+  .nav > nav.mobile-nav-open .nav-link-button.active::after {
+    display: none;
+  }
+
+  /* Mobile cards: one card per row for readable text and controls. */
+  .category-cards,
+  .offers,
+  .popular-grid,
+  .menu-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .category-cards .category-card {
+    min-height: 185px !important;
+    height: 185px !important;
+  }
+
+  .product-glass-card {
+    min-height: 255px !important;
+    height: 255px !important;
+  }
+
+  .featured-offer {
+    min-height: 280px !important;
+  }
+}
+
+@keyframes mobile-menu-slide-in {
+  from { transform: translateX(-100%); opacity: .7; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@media (max-width: 560px) {
+  .mobile-menu-toggle {
+    width: 40px;
+    height: 40px;
+    padding: 7px;
+  }
+
+  .nav > nav.mobile-nav-open {
+    width: min(285px, 84vw);
+    padding-top: 78px;
+  }
+
+  .category-cards,
+  .offers,
+  .popular-grid,
+  .menu-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .category-cards .category-card {
+    min-height: 175px !important;
+    height: 175px !important;
+  }
+
+  .product-glass-card {
+    min-height: 245px !important;
+    height: 245px !important;
+  }
+
+  .featured-offer {
+    min-height: 270px !important;
+  }
+}
+
+/* Admin mobile drawer: menu button stays at the physical top-left. */
+@media (max-width: 850px) {
+  .admin {
+    display: block !important;
+    min-height: 100vh;
+  }
+
+  .admin aside {
+    display: flex !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: min(300px, 84vw) !important;
+    height: 100dvh !important;
+    z-index: 101 !important;
+    padding: 22px !important;
+    overflow-y: auto;
+    transform: translateX(-105%);
+    transition: transform .24s ease;
+    box-shadow: 18px 0 45px rgba(0,0,0,.20);
+  }
+
+  .admin.mobile-menu-open aside {
+    transform: translateX(0);
+  }
+
+  .admin-mobile-menu-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 103;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(234,223,213,.95);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--text);
+    box-shadow: 0 7px 20px rgba(40,25,15,.12);
+    cursor: pointer;
+  }
+
+  .admin-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(20,14,10,.38);
+    cursor: pointer;
+  }
+
+  .admin-main {
+    width: 100%;
+    max-width: none;
+    padding: 72px 18px 22px !important;
+  }
+
+  .admin-top {
+    padding-left: 0;
+  }
+
+  .admin-nav {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin aside .admin-nav {
+    display: grid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav > nav.mobile-nav-open,
+  .admin aside {
+    animation: none;
+    transition: none;
+  }
+}
