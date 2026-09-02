@@ -21,8 +21,8 @@ export default function CartModal({cart,setCart,total,settings,customer,onClose,
         <div className="checkout-section loyalty-checkout-section">
           <div className="checkout-section-head"><span className="eyebrow">الولاء</span><h3>استخدام نقاط الولاء</h3></div>
           <div className="loyalty-balance-row">
-            <span>رصيدك: <b>{Number(customer.points || 0).toLocaleString('ar-LB')} نقطة</b></span>
-            <span>{pointValue.toLocaleString('ar-LB')} {currency} / نقطة</span>
+            <span>رصيدك: <b>{Number(customer.points || 0).toLocaleString('ar-LB-u-nu-latn')} نقطة</b></span>
+            <span>{pointValue.toLocaleString('ar-LB-u-nu-latn')} {currency} / نقطة</span>
           </div>
           {maxRedeem > 0 ? (
             <div className="loyalty-input-area">

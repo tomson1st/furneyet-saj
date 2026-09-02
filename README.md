@@ -70,3 +70,9 @@ npm start
 أضيفت صفحة مستقلة داخل لوحة الإدارة لتسجيل طلبات الزبائن عبر الهاتف بسرعة، مع البحث عن الزبون برقم الهاتف، العناوين المحفوظة، الأصناف والعروض، مناطق التوصيل، وحساب الإجمالي.
 
 الصلاحية الخاصة بالصفحة هي `RECEIVE_PHONE_ORDERS` (تلقي طلبات عبر الهاتف). المدير الكامل يملكها تلقائياً، ويمكن منحها للموظف من صفحة المستخدمين.
+
+## Analytics and numeric display update
+- Analytics now separates web orders and phone orders, including order counts and revenue by channel.
+- Invoice totals now include the amount written in Arabic words.
+- Numeric formatting across the client uses Latin/English digits (`ar-LB-u-nu-latn`) while preserving Arabic language/date formatting.
+- Invoice numeric values also use English digits.

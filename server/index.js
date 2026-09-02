@@ -413,7 +413,7 @@ app.post('/api/public/coupon/validate',async(req,res,next)=>{try{
   if(c.max_uses!=null&&Number(c.used_count)>=Number(c.max_uses))return res.status(400).json({error:'تم الوصول إلى الحد الأقصى لاستخدام كود الخصم'});
   const minOrder=Number(c.min_order||0);
   if(!Number.isFinite(minOrder))return res.status(400).json({error:'إعداد الحد الأدنى لكود الخصم غير صالح'});
-  if(subtotal<minOrder)return res.status(400).json({error:`الحد الأدنى للطلب لتطبيق هذا الكود هو ${minOrder.toLocaleString('ar-LB')}`});
+  if(subtotal<minOrder)return res.status(400).json({error:`الحد الأدنى للطلب لتطبيق هذا الكود هو ${minOrder.toLocaleString('ar-LB-u-nu-latn')}`});
   const value=Number(c.value||0);
   const discount=c.type==='percent'?Math.min(subtotal,subtotal*value/100):Math.min(subtotal,value);
   res.json({code,discount,total:subtotal-discount,message:'تم تطبيق الخصم'});
@@ -691,7 +691,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
     const requestedDeliveryFee=Number(req.body?.deliveryFee||0);
     if(!Number.isFinite(requestedDeliveryFee)||requestedDeliveryFee<0)return res.status(400).json({error:'رسم التوصيل غير صالح'});
     const deliveryFee=deliveryZone?Number(deliveryZone.fee):requestedDeliveryFee;
-    if(deliveryZone && total < Number(deliveryZone.min_order||0)) return res.status(400).json({error:`الحد الأدنى للطلب في منطقة «${deliveryZone.name}» هو ${Number(deliveryZone.min_order||0).toLocaleString('ar-LB')}`});
+    if(deliveryZone && total < Number(deliveryZone.min_order||0)) return res.status(400).json({error:`الحد الأدنى للطلب في منطقة «${deliveryZone.name}» هو ${Number(deliveryZone.min_order||0).toLocaleString('ar-LB-u-nu-latn')}`});
     const afterCoupon=Math.max(0,total-discount);
     const settings=await getSettings();
     const loyaltyEnabled=settings.loyaltyEnabled!=='false';
@@ -851,7 +851,7 @@ app.post('/api/admin/phone-orders', auth, requireCsrf, requirePerm('RECEIVE_PHON
       const extra=selected.reduce((sum,n)=>sum+Math.max(0,allowed.get(n)),0),price=Number(r.price)+extra; normalized.push({itemId,name:r.name,price,quantity:qty,type:'item',options:selected}); subtotal+=price*qty;
     }
     if(normalized.length!==items.length)return res.status(400).json({error:'بعض الأصناف المختارة غير متاحة حالياً'});
-    if(zone&&subtotal<Number(zone.min_order))return res.status(400).json({error:`الحد الأدنى للطلب في منطقة «${zone.name}» هو ${Number(zone.min_order).toLocaleString('ar-LB')}`});
+    if(zone&&subtotal<Number(zone.min_order))return res.status(400).json({error:`الحد الأدنى للطلب في منطقة «${zone.name}» هو ${Number(zone.min_order).toLocaleString('ar-LB-u-nu-latn')}`});
     const deliveryFee=zone?Number(zone.fee):0; const total=subtotal+deliveryFee; const estimated=new Date(Date.now()+45*60000);
     const cp=await query(`SELECT id FROM customer_users WHERE regexp_replace(phone,'[^0-9]','','g')=$1 AND active=true LIMIT 1`,[customerPhone.replace(/\D/g,'')]);
     const customerUserId=cp.rows[0]?Number(cp.rows[0].id):null;
@@ -1141,11 +1141,12 @@ app.get('/api/admin/analytics',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,
     // Build analytics from the raw order rows instead of relying on SQL aggregate
     // expressions. This keeps the endpoint compatible with older PostgreSQL schemas
     // and legacy data while still calculating the same dashboard metrics.
-    const q = await query('SELECT id,total,status,created_at,items_json FROM orders ORDER BY id DESC');
+    const q = await query('SELECT id,total,status,created_at,items_json,order_channel FROM orders ORDER BY id DESC');
     const now = Date.now();
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
     const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
     let orders = 0, revenue = 0, delivered = 0, cancelled = 0;
+    let webOrders = 0, webRevenue = 0, phoneOrders = 0, phoneRevenue = 0;
     const byDayMap = new Map();
     const bestMap = new Map();
 
@@ -1154,6 +1155,13 @@ app.get('/api/admin/analytics',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,
       const amount = Number.isFinite(total) ? total : 0;
       orders += 1;
       revenue += amount;
+      if (String(row.order_channel || 'web') === 'phone') {
+        phoneOrders += 1;
+        phoneRevenue += amount;
+      } else {
+        webOrders += 1;
+        webRevenue += amount;
+      }
       if (String(row.status) === 'delivered') delivered += 1;
       if (String(row.status) === 'cancelled') cancelled += 1;
 
@@ -1204,7 +1212,9 @@ app.get('/api/admin/analytics',auth,requirePerm('RECEIVE_ORDERS'),async(req,res,
         revenue:Number(revenue.toFixed(2)),
         delivered,
         cancelled,
-        avg_order:orders ? Number((revenue / orders).toFixed(2)) : 0
+        avg_order:orders ? Number((revenue / orders).toFixed(2)) : 0,
+        web: { orders: webOrders, revenue: Number(webRevenue.toFixed(2)) },
+        phone: { orders: phoneOrders, revenue: Number(phoneRevenue.toFixed(2)) }
       },
       byDay,
       bestsellers

@@ -1,6 +1,6 @@
 const API='/api';
 
-export const money=(n,c='ل.ل')=>`${Number(n||0).toLocaleString('ar-LB')} ${c}`;
+export const money=(n,c='ل.ل')=>`${Number(n||0).toLocaleString('ar-LB-u-nu-latn')} ${c}`;
 const arabicOnes=['','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة','عشرة','أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'];
 const arabicTens=['','','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'];
 function under100(n){

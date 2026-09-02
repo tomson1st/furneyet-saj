@@ -12,7 +12,7 @@ export default function MarketingPanel({data,refresh}){
   const [editingZone,setEditingZone]=useState(null);
   const [error,setError]=useState('');
   const [loyalty,setLoyalty]=useState({loyaltyEnabled:data.settings?.loyaltyEnabled??'true',loyaltyEarnAmount:data.settings?.loyaltyEarnAmount??10000,loyaltyPointValue:data.settings?.loyaltyPointValue??1000,loyaltyMinRedeem:data.settings?.loyaltyMinRedeem??10,loyaltyMaxRedeemPercent:data.settings?.loyaltyMaxRedeemPercent??50});
-  const formatDate=v=>v?new Date(v).toLocaleDateString('ar-LB',{year:'numeric',month:'short',day:'numeric'}):'—';
+  const formatDate=v=>v?new Date(v).toLocaleDateString('ar-LB-u-nu-latn',{year:'numeric',month:'short',day:'numeric'}):'—';
   // datetime-local values are browser-local times without a timezone. Convert them
   // to UTC before sending them to PostgreSQL TIMESTAMPTZ on the server.
   const toUtcIso=v=>{if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d.toISOString()};
@@ -62,7 +62,7 @@ export default function MarketingPanel({data,refresh}){
         <label><span>الحد الأدنى للاستبدال</span><input type="number" min="0" step="1" value={loyalty.loyaltyMinRedeem} onChange={e=>setLoyalty({...loyalty,loyaltyMinRedeem:e.target.value})}/></label>
         <label><span>أقصى نسبة من قيمة المنتجات</span><input type="number" min="0" max="100" step="1" value={loyalty.loyaltyMaxRedeemPercent} onChange={e=>setLoyalty({...loyalty,loyaltyMaxRedeemPercent:e.target.value})}/></label>
       </div>
-      <div className="loyalty-rules-summary"><div><b>الكسب</b><span>نقطة لكل {Number(loyalty.loyaltyEarnAmount||0).toLocaleString('ar-LB')} ل.ل</span></div><div><b>القيمة</b><span>كل نقطة = {Number(loyalty.loyaltyPointValue||0).toLocaleString('ar-LB')} {data.settings?.currency||'ل.ل'}</span></div><div><b>الاستخدام</b><span>حتى {Number(loyalty.loyaltyMaxRedeemPercent||0)}% من قيمة المنتجات</span></div></div>
+      <div className="loyalty-rules-summary"><div><b>الكسب</b><span>نقطة لكل {Number(loyalty.loyaltyEarnAmount||0).toLocaleString('ar-LB-u-nu-latn')} ل.ل</span></div><div><b>القيمة</b><span>كل نقطة = {Number(loyalty.loyaltyPointValue||0).toLocaleString('ar-LB-u-nu-latn')} {data.settings?.currency||'ل.ل'}</span></div><div><b>الاستخدام</b><span>حتى {Number(loyalty.loyaltyMaxRedeemPercent||0)}% من قيمة المنتجات</span></div></div>
       <p className="settings-help">تُمنح النقاط بعد تسليم الطلب، ويمكن للزبون استخدامها وفق الحدود المحددة أعلاه.</p>
       <button type="button" className="btn primary" onClick={saveLoyalty}>حفظ إعدادات برنامج الولاء</button>
     </div>
@@ -82,9 +82,9 @@ export default function MarketingPanel({data,refresh}){
         <div className="marketing-form-actions"><button type="button" className="btn primary" onClick={saveCoupon} disabled={!coupon.code.trim()}>{editingCoupon?<Edit3 size={16}/>:<Plus size={16}/>} {editingCoupon?'حفظ التعديل':'إضافة الكود'}</button>{editingCoupon&&<button type="button" className="btn ghost" onClick={resetCoupon}>كود جديد</button>}</div>
         <div className="modern-table-wrap"><table className="modern-admin-table"><thead><tr><th>الكود</th><th>الخصم</th><th>الحد الأدنى</th><th>الاستخدام</th><th>الصلاحية</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>{(data.coupons||[]).length===0?<tr><td colSpan="7" className="table-empty">لا توجد أكواد خصم حتى الآن.</td></tr>:(data.coupons||[]).map(c=><tr key={c.id}>
           <td><strong className="code-badge">{c.code}</strong></td>
-          <td><b>{c.type==='percent'?`${Number(c.value||0).toLocaleString('ar-LB')}%`:money(c.value,data.settings.currency)}</b></td>
+          <td><b>{c.type==='percent'?`${Number(c.value||0).toLocaleString('ar-LB-u-nu-latn')}%`:money(c.value,data.settings.currency)}</b></td>
           <td>{money(c.min_order,data.settings.currency)}</td>
-          <td>{Number(c.used_count||0).toLocaleString('ar-LB')} / {c.max_uses==null?'∞':Number(c.max_uses).toLocaleString('ar-LB')}</td>
+          <td>{Number(c.used_count||0).toLocaleString('ar-LB-u-nu-latn')} / {c.max_uses==null?'∞':Number(c.max_uses).toLocaleString('ar-LB-u-nu-latn')}</td>
           <td><small>{c.starts_at?formatDate(c.starts_at):'من الآن'}<br/>{c.ends_at?`حتى ${formatDate(c.ends_at)}`:'بدون انتهاء'}</small></td>
           <td><span className={`status-pill ${c.active?'active':'inactive'}`}>{c.active?'فعال':'متوقف'}</span></td>
           <td><div className="table-actions"><button type="button" className="icon-btn" title="تعديل" aria-label={`تعديل ${c.code}`} onClick={()=>{setEditingCoupon(c);setCoupon({code:c.code||'',type:c.type||'fixed',value:String(c.value??''),min_order:String(c.min_order??''),max_uses:c.max_uses==null?'':String(c.max_uses),active:c.active!==false,starts_at:toLocalDateTime(c.starts_at),ends_at:toLocalDateTime(c.ends_at)})}}><Edit3 size={16}/></button><button type="button" className="icon-btn danger" title="حذف" aria-label={`حذف ${c.code}`} onClick={()=>deleteCoupon(c)}><Trash2 size={16}/></button></div></td>
@@ -101,7 +101,7 @@ export default function MarketingPanel({data,refresh}){
         </div>
         <div className="marketing-form-actions"><button type="button" className="btn primary" onClick={saveZone} disabled={!zone.name.trim()}>{editingZone?<Edit3 size={16}/>:<Plus size={16}/>} {editingZone?'حفظ التعديل':'إضافة المنطقة'}</button>{editingZone&&<button type="button" className="btn ghost" onClick={resetZone}>منطقة جديدة</button>}</div>
         <div className="modern-table-wrap"><table className="modern-admin-table"><thead><tr><th>المنطقة</th><th>رسم التوصيل</th><th>الحد الأدنى</th><th>الترتيب</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>{(data.zones||[]).length===0?<tr><td colSpan="6" className="table-empty">لا توجد مناطق توصيل حتى الآن.</td></tr>:(data.zones||[]).map(z=><tr key={z.id}>
-          <td><strong>{z.name}</strong></td><td>{money(z.fee,data.settings.currency)}</td><td>{money(z.min_order,data.settings.currency)}</td><td>{Number(z.sort_order||0).toLocaleString('ar-LB')}</td><td><span className={`status-pill ${z.active?'active':'inactive'}`}>{z.active?'فعالة':'متوقفة'}</span></td><td><div className="table-actions"><button type="button" className="icon-btn" title="تعديل" aria-label={`تعديل ${z.name}`} onClick={()=>startZoneEdit(z)}><Edit3 size={16}/></button><button type="button" className="icon-btn danger" title="حذف" aria-label={`حذف ${z.name}`} onClick={()=>deleteZone(z)}><Trash2 size={16}/></button></div></td>
+          <td><strong>{z.name}</strong></td><td>{money(z.fee,data.settings.currency)}</td><td>{money(z.min_order,data.settings.currency)}</td><td>{Number(z.sort_order||0).toLocaleString('ar-LB-u-nu-latn')}</td><td><span className={`status-pill ${z.active?'active':'inactive'}`}>{z.active?'فعالة':'متوقفة'}</span></td><td><div className="table-actions"><button type="button" className="icon-btn" title="تعديل" aria-label={`تعديل ${z.name}`} onClick={()=>startZoneEdit(z)}><Edit3 size={16}/></button><button type="button" className="icon-btn danger" title="حذف" aria-label={`حذف ${z.name}`} onClick={()=>deleteZone(z)}><Trash2 size={16}/></button></div></td>
         </tr>)}</tbody></table></div>
       </div>
     </div>

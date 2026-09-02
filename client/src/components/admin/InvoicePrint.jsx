@@ -1,4 +1,4 @@
-import { api } from '../../lib/utils';
+import { api, moneyInWords } from '../../lib/utils';
 
 const escapeHtml = value => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -7,12 +7,13 @@ const escapeHtml = value => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#039;');
 
-const formatMoney = (value, currency) => `${Number(value || 0).toLocaleString('ar-LB')} ${escapeHtml(currency || 'ل.ل')}`;
+const formatMoney = (value, currency) => `${Number(value || 0).toLocaleString('ar-LB-u-nu-latn')} ${escapeHtml(currency || 'ل.ل')}`;
+const formatMoneyWords = (value, currency) => escapeHtml(moneyInWords(value, currency || 'ل.ل'));
 const formatDate = value => {
   const raw = String(value || '');
   const normalized = raw.endsWith('Z') || /[+-]\d\d:\d\d$/.test(raw) ? raw : `${raw}Z`;
   const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ar-LB', { timeZone: 'Asia/Beirut', dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ar-LB-u-nu-latn', { timeZone: 'Asia/Beirut', dateStyle: 'medium', timeStyle: 'short' });
 };
 
 export async function openInvoicePrint(orderId, printSize = 'A4') {
@@ -43,7 +44,7 @@ export async function openInvoicePrint(orderId, printSize = 'A4') {
         <td class="num">${index + 1}</td>
         <td><strong>${escapeHtml(item.name)}</strong>${item.description ? `<div class="desc">${escapeHtml(item.description)}</div>` : ''}${options}</td>
         <td>${escapeHtml(item.category || '—')}</td>
-        <td class="num">${Number(item.quantity || 0).toLocaleString('ar-LB')}</td>
+        <td class="num">${Number(item.quantity || 0).toLocaleString('ar-LB-u-nu-latn')}</td>
         <td class="num">${formatMoney(item.price, settings.currency)}</td>
         <td class="num"><strong>${formatMoney(Number(item.price || 0) * Number(item.quantity || 0), settings.currency)}</strong></td>
       </tr>`;
@@ -59,11 +60,12 @@ export async function openInvoicePrint(orderId, printSize = 'A4') {
 
     const summaryRows = [
       invoice.delivery_fee != null && Number(invoice.delivery_fee) > 0 ? `<div><span>رسم التوصيل</span><strong>${formatMoney(invoice.delivery_fee, settings.currency)}</strong></div>` : '',
-      `<div class="grand"><span>الإجمالي</span><strong>${formatMoney(invoice.total, settings.currency)}</strong></div>`
+      `<div class="grand"><span>الإجمالي</span><strong>${formatMoney(invoice.total, settings.currency)}</strong></div>`,
+      `<div class="words-total"><span>المجموع بالأحرف</span><strong>${formatMoneyWords(invoice.total, settings.currency)}</strong></div>`
     ].join('');
 
     const logo = settings.logoUrl ? `<img class="logo" src="${escapeHtml(settings.logoUrl)}" alt="شعار المطعم">` : `<div class="logo-fallback">ف</div>`;
-    const loyaltyBlock = loyaltyAward > 0 ? `<div class="info-card loyalty"><span>نقاط الولاء المكتسبة</span><strong>${loyaltyAward.toLocaleString('ar-LB')} نقطة</strong></div>` : '';
+    const loyaltyBlock = loyaltyAward > 0 ? `<div class="info-card loyalty"><span>نقاط الولاء المكتسبة</span><strong>${loyaltyAward.toLocaleString('ar-LB-u-nu-latn')} نقطة</strong></div>` : '';
     const couponBlock = couponCode ? `<div class="coupon-note">تم استعمال كوبون الخصم: <strong dir="ltr">${escapeHtml(couponCode)}</strong></div>` : '';
 
     printWindow.document.open();
@@ -87,7 +89,7 @@ body{padding:18mm}
 .section-title{font-size:13px;font-weight:700;margin:20px 0 9px;padding-bottom:6px;border-bottom:1px solid #ddd}
 .customer-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;border:1px solid #ddd;border-radius:10px;padding:12px}.customer-grid div{display:flex;gap:8px;align-items:flex-start}.customer-grid span{color:#777;min-width:92px}.customer-grid b{flex:1}.customer-grid .address{grid-column:1/-1}
 table{width:100%;border-collapse:collapse;margin-top:4px}th,td{border-bottom:1px solid #ddd;padding:9px 7px;vertical-align:top}th{background:#f4f4f4;font-weight:700;text-align:right}td.num,th.num{text-align:center;white-space:nowrap}.desc,.subline{font-size:10px;color:#666;margin-top:2px}
-.summary{margin-top:14px;margin-right:auto;width:min(360px,100%)}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .grand{border-top:2px solid #222;margin-top:4px;padding-top:9px;font-size:15px}
+.summary{margin-top:14px;margin-right:auto;width:min(360px,100%)}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .grand{border-top:2px solid #222;margin-top:4px;padding-top:9px;font-size:15px}.summary .words-total{display:block;border-top:1px dashed #aaa;margin-top:6px;padding-top:7px}.summary .words-total span,.summary .words-total strong{display:block}.summary .words-total span{color:#666;font-size:10px}.summary .words-total strong{font-size:11px;margin-top:2px}
 .info-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.info-card{border:1px solid #ddd;border-radius:10px;padding:9px 13px;display:flex;gap:12px;align-items:center}.info-card span{color:#666}.info-card.loyalty strong{font-size:14px}.coupon-note{margin-top:12px;padding:10px 12px;border:1px dashed #777;border-radius:9px}
 .footer{margin-top:28px;padding-top:12px;border-top:1px solid #ddd;text-align:center;color:#777;font-size:10px}.print-actions{display:flex;justify-content:center;gap:8px;margin:20px 0}.print-actions button{font:inherit;border:0;border-radius:8px;padding:9px 18px;cursor:pointer;background:#222;color:#fff}.print-actions button.secondary{background:#eee;color:#222}
 @media print{body{padding:0}.print-actions{display:none}.invoice{max-width:none}.header{break-inside:avoid}table{break-inside:auto}tr{break-inside:avoid;break-after:auto}}
