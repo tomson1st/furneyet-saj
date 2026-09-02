@@ -15,7 +15,7 @@ const formatDate = value => {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ar-LB', { timeZone: 'Asia/Beirut', dateStyle: 'medium', timeStyle: 'short' });
 };
 
-export async function openInvoicePrint(orderId, printSize = 'a4') {
+export async function openInvoicePrint(orderId) {
   const printWindow = window.open('', '_blank', 'width=900,height=1000');
   if (!printWindow) {
     alert('تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة للموقع.');
@@ -90,12 +90,9 @@ table{width:100%;border-collapse:collapse;margin-top:4px}th,td{border-bottom:1px
 .footer{margin-top:28px;padding-top:12px;border-top:1px solid #ddd;text-align:center;color:#777;font-size:10px}.print-actions{display:flex;justify-content:center;gap:8px;margin:20px 0}.print-actions button{font:inherit;border:0;border-radius:8px;padding:9px 18px;cursor:pointer;background:#222;color:#fff}.print-actions button.secondary{background:#eee;color:#222}
 @media print{body{padding:0}.print-actions{display:none}.invoice{max-width:none}.header{break-inside:avoid}table{break-inside:auto}tr{break-inside:avoid;break-after:auto}}
 @page{size:A4;margin:12mm}
-@media print{body.thermal{width:80mm;padding:0 3mm;font-size:10px}.thermal .invoice{width:100%;max-width:none}.thermal .header{display:block;text-align:center;border-bottom:1px dashed #333;padding-bottom:7px;margin-bottom:8px}.thermal .logo,.thermal .logo-fallback{width:42px;height:42px;margin:0 auto 4px}.thermal .brand{display:block}.thermal .brand h1{font-size:14px;margin:0}.thermal .brand p{font-size:9px}.thermal .invoice-meta{text-align:center;margin-top:3px}.thermal .invoice-meta strong{font-size:12px}.thermal .section-title{font-size:10px;margin:9px 0 4px;padding-bottom:3px}.thermal .customer-grid{display:block;border:0;border-radius:0;padding:0}.thermal .customer-grid div{display:flex;gap:4px;padding:1px 0}.thermal .customer-grid span{min-width:65px}.thermal table{font-size:9px}.thermal th,.thermal td{padding:3px 2px}.thermal th:nth-child(3),.thermal td:nth-child(3){display:none}.thermal .desc,.thermal .subline{font-size:8px}.thermal .summary{width:100%;margin-top:7px}.thermal .summary div{padding:2px 0}.thermal .summary .grand{font-size:12px}.thermal .info-row{display:block;margin-top:7px}.thermal .info-card,.thermal .coupon-note{border:1px dashed #555;border-radius:0;padding:4px 5px;margin-top:4px}.thermal .footer{margin-top:10px;padding-top:5px;font-size:8px}.thermal .print-actions{display:none}}
-@media print{body.thermal58{width:58mm;padding:0 2mm;font-size:9px}.thermal58 .invoice{width:100%;max-width:none}.thermal58 .header{display:block;text-align:center;border-bottom:1px dashed #333;padding-bottom:5px;margin-bottom:6px}.thermal58 .logo,.thermal58 .logo-fallback{width:34px;height:34px;margin:0 auto 3px}.thermal58 .brand{display:block}.thermal58 .brand h1{font-size:12px}.thermal58 .brand p{font-size:8px}.thermal58 .invoice-meta{text-align:center}.thermal58 .invoice-meta strong{font-size:10px}.thermal58 .section-title{font-size:9px;margin:7px 0 3px}.thermal58 .customer-grid{display:block;border:0;padding:0}.thermal58 .customer-grid div{display:block;padding:1px 0}.thermal58 .customer-grid span{display:block;min-width:0}.thermal58 .customer-grid b{display:block}.thermal58 table{font-size:8px}.thermal58 th,.thermal58 td{padding:2px 1px}.thermal58 th:nth-child(3),.thermal58 td:nth-child(3),.thermal58 th:nth-child(5),.thermal58 td:nth-child(5){display:none}.thermal58 .desc,.thermal58 .subline{font-size:7px}.thermal58 .summary{width:100%;margin-top:5px}.thermal58 .summary .grand{font-size:11px}.thermal58 .info-row{display:block}.thermal58 .info-card,.thermal58 .coupon-note{border:0;border-top:1px dashed #555;border-radius:0;padding:3px 0}.thermal58 .footer{margin-top:7px;font-size:7px}.thermal58 .print-actions{display:none}}
-@media print{body.thermal,body.thermal58{height:auto}body.thermal .invoice,body.thermal58 .invoice{overflow:visible}}
 </style>
 </head>
-<body class="${printSize === 'thermal58' ? 'thermal58' : printSize === 'thermal80' ? 'thermal' : ''}">
+<body>
 <div class="invoice">
   <header class="header">
     <div class="brand">${logo}<div><h1>${escapeHtml(settings.siteName || 'فرنية صاج')}</h1><p>فاتورة طلب</p></div></div>
@@ -115,9 +112,9 @@ table{width:100%;border-collapse:collapse;margin-top:4px}th,td{border-bottom:1px
   ${loyaltyBlock || couponBlock ? `<div class="info-row">${loyaltyBlock}${couponBlock}</div>` : ''}
   ${invoice.notes ? `<div class="section-title">ملاحظات الطلب</div><div class="customer-grid"><div class="address"><span>ملاحظة</span><b>${escapeHtml(invoice.notes)}</b></div></div>` : ''}
   <footer class="footer">${escapeHtml(settings.siteName || 'فرنية صاج')} · شكراً لطلبكم</footer>
-  <div class="print-actions"><button onclick="window.print()">طباعة بهذا الحجم</button><button onclick="setPrintSize('thermal80')">طابعة حرارية 80mm</button><button onclick="setPrintSize('thermal58')">طابعة حرارية 58mm</button><button class="secondary" onclick="window.close()">إغلاق</button></div>
+  <div class="print-actions"><button onclick="window.print()">طباعة الفاتورة</button><button class="secondary" onclick="window.close()">إغلاق</button></div>
 </div>
-<script>function setPrintSize(size){document.body.classList.remove('thermal','thermal58');if(size==='thermal80')document.body.classList.add('thermal');if(size==='thermal58')document.body.classList.add('thermal58');setTimeout(()=>window.print(),80)}window.addEventListener('load',()=>setTimeout(()=>window.print(),350));</script>
+<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350));</script>
 </body></html>`);
     printWindow.document.close();
   } catch (error) {
