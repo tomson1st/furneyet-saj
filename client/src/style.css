@@ -2596,10 +2596,12 @@ footer {
   flex-direction: column;
   justify-content: flex-end;
   color: var(--text);
-  background: rgba(255, 252, 247, .80);
-  border-top: 1px solid rgba(255, 255, 255, .62);
-  backdrop-filter: blur(14px) saturate(125%);
-  -webkit-backdrop-filter: blur(14px) saturate(125%);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+  -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.36), 0 15px 40px rgba(0, 0, 0, 0.20);
+  overflow: hidden;
 }
 .product-glass-body h3 {
   margin: 2px 0 3px;
@@ -2657,7 +2659,7 @@ footer {
 @media (max-width: 560px) {
   .product-glass-card { min-height: 225px; height: 225px; border-radius: 16px; }
   .popular-grid, .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .product-glass-body { min-height: 48%; padding: 10px 10px 9px; backdrop-filter: blur(11px) saturate(120%); -webkit-backdrop-filter: blur(11px) saturate(120%); }
+  .product-glass-body { min-height: 48%; padding: 10px 10px 9px; backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%); -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%); }
   .product-glass-body h3 { font-size: 13px; }
   .product-glass-body p { font-size: 9px; }
   .product-glass-body .item-foot strong { font-size: 11px; }
@@ -3228,12 +3230,13 @@ nav a svg,
   width:min(46%, 390px);
   padding:20px;
   color:#fff;
-  background:rgba(20,20,20,.32);
-  border:1px solid rgba(255,255,255,.24);
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.15);
   border-radius:18px;
-  -webkit-backdrop-filter:blur(14px) saturate(125%);
-  backdrop-filter:blur(14px) saturate(125%);
-  box-shadow:0 10px 28px rgba(0,0,0,.12);
+  -webkit-backdrop-filter:url(#liquidGlass) blur(12px) saturate(180%);
+  backdrop-filter:url(#liquidGlass) blur(12px) saturate(180%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.36), 0 15px 40px rgba(0,0,0,.20);
+  overflow:hidden;
 }
 .featured-offer .featured-offer-content h3{
   margin:0 0 8px;
@@ -3332,11 +3335,13 @@ nav a svg,
   bottom:12px;
   padding:14px 16px;
   border-radius:14px;
-  background:rgba(20,20,20,.32);
-  border:1px solid rgba(255,255,255,.24);
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.15);
   color:#fff;
-  -webkit-backdrop-filter:blur(12px) saturate(120%);
-  backdrop-filter:blur(12px) saturate(120%);
+  -webkit-backdrop-filter:url(#liquidGlass) blur(12px) saturate(180%);
+  backdrop-filter:url(#liquidGlass) blur(12px) saturate(180%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.36), 0 15px 40px rgba(0,0,0,.20);
+  overflow:hidden;
 }
 .admin-product-card .admin-product-info h3{
   margin:0 0 5px;
@@ -3442,3 +3447,23 @@ nav a svg,
 .loyalty-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:8px}.loyalty-admin-grid label{display:grid;gap:6px;font-size:12px;font-weight:700}.settings-help{margin:0 0 18px;color:var(--muted);font-size:11px;line-height:1.8}
 @media(max-width:820px){.customer-account-modal{padding:28px 18px 22px}.customer-layout{grid-template-columns:1fr;gap:16px}.customer-left-column{order:2}.customer-right-column{order:1}.customer-orders-large{max-height:360px}.customer-order-large{grid-template-columns:1fr 1fr!important}.customer-order-large .btn{grid-column:1/-1}.loyalty-admin-grid{grid-template-columns:1fr}}
 @media(max-width:480px){.customer-account-modal{padding:24px 12px 18px}.customer-right-column,.customer-left-column{padding:15px}.customer-stat-grid{gap:8px}.loyalty-card>strong{font-size:1.4rem}.loyalty-balance-row{flex-direction:column;align-items:flex-start}.cart-price-breakdown{font-size:11px}}
+
+
+/* Liquid Glass effect from the project source: applied only to product/offer detail surfaces. */
+.product-glass-body::before,
+.featured-offer .featured-offer-content::before,
+.admin-product-card .admin-product-info::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.22), transparent 40%);
+  pointer-events: none;
+  z-index: -1;
+}
+.liquid-glass-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
