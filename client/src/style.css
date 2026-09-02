@@ -443,7 +443,7 @@ nav a:hover {
 }
 .popular-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
 .popular-item {
@@ -1618,7 +1618,7 @@ header {
 
 /* Popular products closer to the reference design. */
 .popular-grid {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
 .popular-item {
@@ -1710,7 +1710,7 @@ footer {
   }
   .category-cards,
   .popular-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -3101,6 +3101,7 @@ nav a svg,
   color:var(--text);
   text-align:right;
   background:rgba(255,252,247,.78);
+  background: #ffffffb8 ;
   border-top:1px solid rgba(255,255,255,.58);
   backdrop-filter:blur(14px) saturate(125%);
   -webkit-backdrop-filter:blur(14px) saturate(125%);
@@ -3603,8 +3604,9 @@ nav a svg,
   overflow: hidden !important;
   color: #17120f !important;
   background: rgba(255,255,255,.34) !important;
+  background: #ffffffb8 !important;
   border: 1px solid rgba(255,255,255,.42) !important;
-  border-radius: 16px !important;
+  border-radius: 15px !important;
   backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
   -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
   box-shadow:
@@ -3700,6 +3702,7 @@ nav a svg,
   border: 1px solid rgba(255,255,255,.42) !important;
   border-radius: 16px !important;
   background: rgba(255,255,255,.34) !important;
+  background: #ffffffb8 !important;
   backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
   -webkit-backdrop-filter: url(#liquidGlass) blur(12px) saturate(180%) !important;
   box-shadow:
@@ -3831,6 +3834,7 @@ nav a svg,
     padding: 10px 11px !important;
     border-radius: 14px !important;
     background: rgba(255,255,255,.38) !important;
+    background: #ffffffb8 !important;
   }
 
   .featured-offer {
@@ -4166,6 +4170,7 @@ nav a svg,
 .featured-offer .featured-offer-content,
 .admin-product-card .admin-product-info {
   background: rgba(255,255,255,.24) !important;
+  background: #ffffffb8 !important;
   backdrop-filter: blur(12px) saturate(135%) !important;
   -webkit-backdrop-filter: blur(12px) saturate(135%) !important;
 }
