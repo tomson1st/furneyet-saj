@@ -4473,3 +4473,6 @@ nav a svg,
 @media(max-width:1050px){.phone-order-grid{grid-template-columns:1fr}.phone-cart{position:static}.phone-item-grid{max-height:360px}}
 @media(max-width:680px){.phone-order-main,.phone-cart{padding:15px}.phone-fields,.phone-item-grid{grid-template-columns:1fr}.phone-page-head{align-items:flex-start}.phone-page-head .btn{font-size:12px}.phone-found{align-items:flex-start;flex-wrap:wrap}.phone-found small{margin-inline-start:0;width:100%}.phone-success{align-items:flex-start;flex-wrap:wrap}.phone-success .btn{margin-inline-start:0}}
 .phone-offer-tag{display:inline-flex;margin-inline-start:6px;padding:2px 6px;border-radius:999px;background:var(--secondary-soft);color:var(--primary);font-size:9px;font-style:normal}
+.selected-delivery-zone{display:flex;align-items:center;gap:8px;padding:10px 12px;margin-top:2px;border:1px solid var(--theme-line);border-radius:12px;background:var(--theme-surface);color:var(--text)}
+.selected-delivery-zone span{flex:1;font-size:12px}.selected-delivery-zone strong{color:var(--primary);white-space:nowrap}
+.invoice-btn{display:inline-flex;align-items:center;justify-content:center}

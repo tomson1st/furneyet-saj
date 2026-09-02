@@ -118,7 +118,7 @@ async function ensureOrderHistoryTable() {
 }
 
 async function ensurePhase2Schema(){
-await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS allergens TEXT NOT NULL DEFAULT ''`);await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS options_json TEXT NOT NULL DEFAULT '[]'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_user_id BIGINT`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(14,2) NOT NULL DEFAULT 0`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(60)`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_ready_at TIMESTAMPTZ`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_channel VARCHAR(30) NOT NULL DEFAULT 'web'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT`);
+await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS allergens TEXT NOT NULL DEFAULT ''`);await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS options_json TEXT NOT NULL DEFAULT '[]'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_user_id BIGINT`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(14,2) NOT NULL DEFAULT 0`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_zone_id BIGINT`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(60)`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_ready_at TIMESTAMPTZ`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_channel VARCHAR(30) NOT NULL DEFAULT 'web'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT`);
 await query(`CREATE TABLE IF NOT EXISTS customer_users(id BIGSERIAL PRIMARY KEY,name VARCHAR(100) NOT NULL,phone VARCHAR(30) NOT NULL UNIQUE,email VARCHAR(254) UNIQUE,password_hash TEXT NOT NULL,active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
 await query(`CREATE TABLE IF NOT EXISTS customer_addresses(id BIGSERIAL PRIMARY KEY,customer_user_id BIGINT NOT NULL REFERENCES customer_users(id) ON DELETE CASCADE,label VARCHAR(60) NOT NULL,address VARCHAR(300) NOT NULL,is_default BOOLEAN NOT NULL DEFAULT FALSE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
 await query(`CREATE TABLE IF NOT EXISTS favorites(customer_user_id BIGINT NOT NULL REFERENCES customer_users(id) ON DELETE CASCADE,item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(customer_user_id,item_id))`);
@@ -638,9 +638,14 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
     const customerPhone = String(req.body?.customerPhone || '').trim();
     const address = String(req.body?.address || '').trim();
     const notes = String(req.body?.notes || '').trim();
+    const requestedDeliveryZoneId = req.body?.deliveryZoneId == null || req.body.deliveryZoneId === '' ? null : Number(req.body.deliveryZoneId);
     const items = req.body?.items;
     if (!customerName || !customerPhone || !Array.isArray(items) || !items.length || items.length > 50) return res.status(400).json({ error: 'يرجى إدخال الاسم والهاتف واختيار صنف واحد على الأقل' });
     if (customerName.length > 100 || customerPhone.length > 30 || address.length > 300 || notes.length > 500) return res.status(400).json({ error: 'بعض بيانات الطلب طويلة جداً' });
+    if (requestedDeliveryZoneId !== null && (!Number.isInteger(requestedDeliveryZoneId) || requestedDeliveryZoneId < 1)) return res.status(400).json({ error: 'منطقة التوصيل غير صالحة' });
+    const deliveryZone = requestedDeliveryZoneId === null ? null : (await query('SELECT id,name,fee,min_order FROM delivery_zones WHERE id=$1 AND active=true',[requestedDeliveryZoneId])).rows[0];
+    if (requestedDeliveryZoneId !== null && !deliveryZone) return res.status(400).json({ error: 'منطقة التوصيل غير موجودة أو غير فعالة' });
+    if (deliveryZone && !address) return res.status(400).json({ error: 'يرجى إدخال عنوان التوصيل' });
 
     const itemIds = items.map(x => { const n = Number(x?.itemId); return Number.isInteger(n) && n > 0 ? n : Number(x?.productId); }).filter(n => Number.isInteger(n) && n > 0);
     const offerIds = items.map(x => Number(x.offerId || (typeof x.itemId === 'string' && x.itemId.startsWith('offer-') ? x.itemId.slice(6) : NaN))).filter(n => Number.isInteger(n) && n > 0);
@@ -683,8 +688,10 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
       discount=c.type==='percent'?Math.min(total,total*Number(c.value)/100):Math.min(total,Number(c.value));
     }
 
-    const deliveryFee=Number(req.body?.deliveryFee||0);
-    if(!Number.isFinite(deliveryFee)||deliveryFee<0)return res.status(400).json({error:'رسم التوصيل غير صالح'});
+    const requestedDeliveryFee=Number(req.body?.deliveryFee||0);
+    if(!Number.isFinite(requestedDeliveryFee)||requestedDeliveryFee<0)return res.status(400).json({error:'رسم التوصيل غير صالح'});
+    const deliveryFee=deliveryZone?Number(deliveryZone.fee):requestedDeliveryFee;
+    if(deliveryZone && total < Number(deliveryZone.min_order||0)) return res.status(400).json({error:`الحد الأدنى للطلب في منطقة «${deliveryZone.name}» هو ${Number(deliveryZone.min_order||0).toLocaleString('ar-LB')}`});
     const afterCoupon=Math.max(0,total-discount);
     const settings=await getSettings();
     const loyaltyEnabled=settings.loyaltyEnabled!=='false';
@@ -717,7 +724,7 @@ app.post('/api/orders', orderLimiter, async (req, res, next) => {
         if(!deducted.rows[0]) throw Object.assign(new Error('رصيد نقاط الولاء غير كافٍ'),{statusCode:400,publicMessage:'رصيد نقاط الولاء غير كافٍ'});
         loyaltyBalance=Number(deducted.rows[0].points);
       }
-      const result=await client.query('INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,coupon_code,estimated_ready_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',[customerName,customerPhone,address,notes,JSON.stringify(normalized),finalTotal,customerUserId,deliveryFee,couponCode||null,estimated]);
+      const result=await client.query('INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,delivery_zone_id,coupon_code,estimated_ready_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id',[customerName,customerPhone,address,notes,JSON.stringify(normalized),finalTotal,customerUserId,deliveryFee,requestedDeliveryZoneId,couponCode||null,estimated]);
       id=Number(result.rows[0].id);
       await client.query('INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',[id,null,'new',null,'الزبون']);
       if(redeemPoints>0) await client.query('INSERT INTO loyalty_transactions(customer_user_id,points,reason,order_id) VALUES($1,$2,$3,$4)',[customerUserId,-redeemPoints,`استخدام نقاط في الطلب #${id}`,id]);
@@ -848,7 +855,7 @@ app.post('/api/admin/phone-orders', auth, requireCsrf, requirePerm('RECEIVE_PHON
     const deliveryFee=zone?Number(zone.fee):0; const total=subtotal+deliveryFee; const estimated=new Date(Date.now()+45*60000);
     const cp=await query(`SELECT id FROM customer_users WHERE regexp_replace(phone,'[^0-9]','','g')=$1 AND active=true LIMIT 1`,[customerPhone.replace(/\D/g,'')]);
     const customerUserId=cp.rows[0]?Number(cp.rows[0].id):null;
-    const result=await query(`INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,estimated_ready_at,order_channel,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'phone',$10) RETURNING id`,[customerName,customerPhone,address,notes,JSON.stringify(normalized),total,customerUserId,deliveryFee,estimated,req.user.id]);
+    const result=await query(`INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,delivery_zone_id,estimated_ready_at,order_channel,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'phone',$11) RETURNING id`,[customerName,customerPhone,address,notes,JSON.stringify(normalized),total,customerUserId,deliveryFee,zoneId,estimated,req.user.id]);
     const id=Number(result.rows[0].id);
     await query('INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',[id,null,'new',req.user.id,req.user.name||req.user.email||'موظف الهاتف']);
     await audit(req,'CREATE_PHONE_ORDER','order',id,`customer=${customerPhone};total=${total}`);
@@ -974,6 +981,66 @@ app.put('/api/admin/orders/:id', auth, requireCsrf, requirePerm('RECEIVE_ORDERS'
     try { whatsappStatusSent = await sendWhatsAppStatusUpdate(Number(req.params.id), nextStatus); }
     catch (e) { console.error('WhatsApp status error:', e.message); }
     res.json({ ok: true, previousStatus, status: nextStatus, whatsappStatusSent, loyaltyAward });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/admin/orders/:id/invoice', auth, async (req, res, next) => {
+  try {
+    const canPrint = req.user?.role === 'admin' || (req.user?.permissions || []).some(p => p === 'RECEIVE_ORDERS' || p === 'RECEIVE_PHONE_ORDERS');
+    if (!canPrint) return res.status(403).json({ error: 'لا تملك الصلاحية المطلوبة' });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'معرّف الطلب غير صالح' });
+    const orderQuery = await query(`
+      SELECT o.id,o.customer_name,o.customer_phone,o.address,o.notes,o.items_json,o.total,o.delivery_fee,o.coupon_code,o.created_at,o.status,
+             o.customer_user_id,o.delivery_zone_id,o.order_channel,c.name AS account_name,c.phone AS account_phone,c.email AS account_email
+             ,dz.name AS delivery_zone_name
+      FROM orders o
+      LEFT JOIN customer_users c ON c.id=o.customer_user_id
+      LEFT JOIN delivery_zones dz ON dz.id=o.delivery_zone_id
+      WHERE o.id=$1
+    `, [id]);
+    const order = orderQuery.rows[0];
+    if (!order) return res.status(404).json({ error: 'الطلب غير موجود' });
+    if (order.status !== 'delivered') return res.status(400).json({ error: 'يمكن طباعة الفاتورة فقط للطلبات التي حالتها تم التسليم' });
+
+    let storedItems = [];
+    try { storedItems = JSON.parse(order.items_json || '[]'); } catch { storedItems = []; }
+    if (!Array.isArray(storedItems) || !storedItems.length) return res.status(400).json({ error: 'لا توجد أصناف محفوظة لهذا الطلب' });
+
+    const itemIds = storedItems.map(item => Number(item?.itemId)).filter(n => Number.isInteger(n) && n > 0);
+    const offerIds = storedItems.map(item => Number(item?.offerId)).filter(n => Number.isInteger(n) && n > 0);
+    const [itemRows, offerRows, loyaltyRows, settings] = await Promise.all([
+      itemIds.length ? query(`SELECT i.id,i.name,i.description,c.name AS category_name FROM items i LEFT JOIN categories c ON c.id=i.category_id WHERE i.id IN (${itemIds.map((_,i)=>`$${i+1}`).join(',')})`, itemIds) : Promise.resolve({ rows: [] }),
+      offerIds.length ? query(`SELECT id,title AS name,description FROM offers WHERE id IN (${offerIds.map((_,i)=>`$${i+1}`).join(',')})`, offerIds) : Promise.resolve({ rows: [] }),
+      order.customer_user_id ? query('SELECT points FROM loyalty_transactions WHERE order_id=$1 AND points>0 ORDER BY id DESC LIMIT 1', [id]) : Promise.resolve({ rows: [] }),
+      getSettings()
+    ]);
+
+    const itemMap = new Map(itemRows.rows.map(row => [Number(row.id), row]));
+    const offerMap = new Map(offerRows.rows.map(row => [Number(row.id), row]));
+    const items = storedItems.map(item => {
+      const numericItemId = Number(item?.itemId);
+      const offerId = Number(item?.offerId);
+      const source = Number.isInteger(offerId) && offerId > 0 ? offerMap.get(offerId) : itemMap.get(numericItemId);
+      return {
+        name: item?.name || source?.name || 'صنف',
+        description: item?.description ?? source?.description ?? '',
+        category: item?.categoryName || item?.category || (Number.isInteger(offerId) && offerId > 0 ? 'عرض' : source?.category_name || '—'),
+        quantity: Number(item?.quantity || 0),
+        price: Number(item?.price || 0),
+        options: Array.isArray(item?.options) ? item.options.map(String) : []
+      };
+    });
+
+    res.json({
+      id: Number(order.id), status: order.status, order_channel: order.order_channel || 'web',
+      customer_name: order.customer_name, customer_phone: order.customer_phone, address: order.address, notes: order.notes,
+      total: Number(order.total || 0), delivery_fee: Number(order.delivery_fee || 0), delivery_zone_name: order.delivery_zone_name || '', delivery_zone_id: order.delivery_zone_id == null ? null : Number(order.delivery_zone_id),
+      coupon_code: order.coupon_code || '', created_at: order.created_at,
+      customer: { name: order.account_name || order.customer_name, phone: order.account_phone || order.customer_phone, email: order.account_email || '' },
+      loyalty_points_earned: Number(loyaltyRows.rows[0]?.points || 0), items,
+      settings: { siteName: settings.siteName, logoUrl: settings.logoUrl, currency: settings.currency }
+    });
   } catch (e) { next(e); }
 });
 

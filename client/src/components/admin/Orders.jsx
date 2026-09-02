@@ -1,7 +1,8 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import {Search,Clock,CheckCircle2,X,Phone,MapPin,ChevronLeft,Edit3,CheckCircle2 as CheckIcon} from 'lucide-react';
+import {Search,Clock,CheckCircle2,X,Phone,MapPin,ChevronLeft,Edit3,CheckCircle2 as CheckIcon,Printer} from 'lucide-react';
 import {api,money,moneyInWords} from '../../lib/utils';
 import {useProgress} from '../../context/ProgressContext';
+import {openInvoicePrint} from './InvoicePrint';
 export default function Orders({data,refresh}){
   const {run}=useProgress();
   const statuses={new:'جديد',confirmed:'مؤكد',preparing:'قيد التحضير',ready:'جاهز',delivered:'تم التسليم',cancelled:'ملغى'};
@@ -63,6 +64,9 @@ export default function Orders({data,refresh}){
       await refresh();
     }catch(err){alert(err.message||'تعذر تحديث الحالة');}
   };
+  const printInvoice=async order=>{
+    try{ await openInvoicePrint(order.id); }catch(err){ alert(err.message||'تعذر فتح الفاتورة'); }
+  };
   const openHistory=async order=>{
     try{
       const result=await run('جاري تحميل سجل الطلب…',()=>api('/admin/orders/'+order.id+'/history'));
@@ -78,15 +82,15 @@ export default function Orders({data,refresh}){
       {(statusFilter!=='all'||dateFilter!=='all')&&<button className="btn ghost filter-reset" onClick={()=>run('جاري إعادة ضبط الفلاتر…',async()=>resetFilters())}>إعادة ضبط</button>}
     </div>
     <div className="status-legend">{Object.entries(statuses).map(([k,v])=><span key={k} className={`legend-item status-${k}`}><i></i>{v}</span>)}</div>
-    <div className="table-wrap"><table><thead><tr><th>الطلب</th><th>الزبون</th><th>الأصناف</th><th>المجموع</th><th>الحالة</th><th>السجل</th><th>WhatsApp</th></tr></thead><tbody>
-      {filteredOrders.length===0?<tr><td colSpan="7" className="empty-orders">لا توجد طلبات مطابقة للفلاتر المحددة.</td></tr>:filteredOrders.map(o=><tr key={o.id} className={`order-row status-row-${o.status||'new'}`}>
+    <div className="table-wrap"><table><thead><tr><th>الطلب</th><th>الزبون</th><th>الأصناف</th><th>المجموع</th><th>الحالة</th><th>السجل</th><th>WhatsApp</th><th>الفاتورة</th></tr></thead><tbody>
+      {filteredOrders.length===0?<tr><td colSpan="8" className="empty-orders">لا توجد طلبات مطابقة للفلاتر المحددة.</td></tr>:filteredOrders.map(o=><tr key={o.id} className={`order-row status-row-${o.status||'new'}`}>
         <td><b>#{o.id}</b><small>{getOrderDate(o)?getOrderDate(o).toLocaleString('ar-LB',{timeZone:'Asia/Beirut'}):'—'}</small></td>
         <td><b>{o.customer_name}</b><small>{o.customer_phone}</small><small>{o.address}</small></td>
         <td>{o.items.map(i=><div key={i.itemId}>{i.name} × {i.quantity}</div>)}{o.notes&&<small>ملاحظة: {o.notes}</small>}</td>
         <td><div className="order-total-values"><b>{money(o.total,data.settings.currency)}</b><small>{moneyInWords(o.total,data.settings.currency)}</small></div></td>
         <td><select className={`status-select status-${o.status||'new'}`} value={o.status||'new'} onChange={e=>statusChanged(o.id,e.target.value)}>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></td>
         <td><button className="icon-btn history-btn" title="سجل تغييرات الطلب" onClick={()=>openHistory(o)}><Clock size={16}/></button></td>
-        <td>{o.whatsapp_sent?'✓ أُرسلت':'—'}</td>
+        <td>{o.whatsapp_sent?'✓ أُرسلت':'—'}</td><td>{o.status==='delivered'?<button className="icon-btn invoice-btn" title="طباعة الفاتورة" onClick={()=>printInvoice(o)}><Printer size={16}/></button>:'—'}</td>
       </tr>)}
     </tbody></table></div>
     {history&&<div ref={historyPanelRef} id="order-history-panel" className="order-history-panel">
