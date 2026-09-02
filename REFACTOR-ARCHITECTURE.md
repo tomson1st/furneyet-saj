@@ -46,3 +46,8 @@ client/src/
 - Existing API routes and business logic are preserved.
 - Existing global CSS remains in `style.css` to avoid an unrelated styling rewrite.
 - The refactor is organizational: future changes can target one component file instead of editing a 380-line `main.jsx`.
+
+### طلبات الهاتف
+- `client/src/components/admin/PhoneOrders.jsx` — صفحة إدخال الطلبات الهاتفية السريعة.
+- `client/src/components/admin/perms.js` — صلاحية `RECEIVE_PHONE_ORDERS` الخاصة بطلبات الهاتف.
+- واجهات الخادم الخاصة بها موجودة في `server/index.js` وتتحقق من الصلاحية وCSRF قبل إنشاء الطلب.

@@ -1,1 +1,1 @@
-export const perms=[['MANAGE_ITEMS','إدارة الأصناف والتصنيفات والعروض'],['RECEIVE_ORDERS','استقبال وإدارة الطلبات'],['MANAGE_SETTINGS','إدارة الموقع والثيم'],['MANAGE_USERS','إدارة مستخدمي الإدارة'],['ADD_ADMIN','إضافة مدير']];
+export const perms=[['MANAGE_ITEMS','إدارة الأصناف والتصنيفات والعروض'],['RECEIVE_ORDERS','استقبال وإدارة الطلبات'],['RECEIVE_PHONE_ORDERS','تلقي طلبات عبر الهاتف'],['MANAGE_SETTINGS','إدارة الموقع والثيم'],['MANAGE_USERS','إدارة مستخدمي الإدارة'],['ADD_ADMIN','إضافة مدير']];

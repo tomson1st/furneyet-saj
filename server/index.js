@@ -118,7 +118,7 @@ async function ensureOrderHistoryTable() {
 }
 
 async function ensurePhase2Schema(){
-await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS allergens TEXT NOT NULL DEFAULT ''`);await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS options_json TEXT NOT NULL DEFAULT '[]'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_user_id BIGINT`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(14,2) NOT NULL DEFAULT 0`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(60)`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_ready_at TIMESTAMPTZ`);
+await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS allergens TEXT NOT NULL DEFAULT ''`);await query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS options_json TEXT NOT NULL DEFAULT '[]'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_user_id BIGINT`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(14,2) NOT NULL DEFAULT 0`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(60)`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_ready_at TIMESTAMPTZ`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_channel VARCHAR(30) NOT NULL DEFAULT 'web'`);await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT`);
 await query(`CREATE TABLE IF NOT EXISTS customer_users(id BIGSERIAL PRIMARY KEY,name VARCHAR(100) NOT NULL,phone VARCHAR(30) NOT NULL UNIQUE,email VARCHAR(254) UNIQUE,password_hash TEXT NOT NULL,active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
 await query(`CREATE TABLE IF NOT EXISTS customer_addresses(id BIGSERIAL PRIMARY KEY,customer_user_id BIGINT NOT NULL REFERENCES customer_users(id) ON DELETE CASCADE,label VARCHAR(60) NOT NULL,address VARCHAR(300) NOT NULL,is_default BOOLEAN NOT NULL DEFAULT FALSE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
 await query(`CREATE TABLE IF NOT EXISTS favorites(customer_user_id BIGINT NOT NULL REFERENCES customer_users(id) ON DELETE CASCADE,item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(customer_user_id,item_id))`);
@@ -802,11 +802,67 @@ app.post('/api/admin/password-reset-requests/:id/approve',auth,requireCsrf,requi
 app.post('/api/admin/password-reset-requests/:id/reject',auth,requireCsrf,requireAdmin,async(req,res,next)=>{try{const id=Number(req.params.id);const q=await query("UPDATE password_reset_requests SET status='rejected',approved_at=NOW(),approved_by=$1 WHERE id=$2 AND status='pending' RETURNING id",[req.user.id,id]);if(!q.rows[0])return res.status(404).json({error:'طلب إعادة التعيين غير موجود أو تمت معالجته'});await audit(req,'REJECT_PASSWORD_RESET','password_reset_request',id);res.json({ok:true})}catch(e){next(e)}});
 app.patch('/api/admin/customers/:id/status',auth,requireCsrf,requirePerm('MANAGE_USERS'),async(req,res,next)=>{try{const id=Number(req.params.id),active=Boolean(req.body?.active);if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'معرّف الزبون غير صالح'});const q=await query('UPDATE customer_users SET active=$1 WHERE id=$2 RETURNING id,active',[active,id]);if(!q.rows[0])return res.status(404).json({error:'الزبون غير موجود'});await audit(req,active?'ACTIVATE_CUSTOMER':'FREEZE_CUSTOMER','customer',id);res.json({ok:true,active:!!q.rows[0].active})}catch(e){next(e)}});
 app.delete('/api/admin/customers/:id',auth,requireCsrf,requirePerm('MANAGE_USERS'),async(req,res,next)=>{const client=await pool.connect();try{const id=Number(req.params.id);if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'معرّف الزبون غير صالح'});await client.query('BEGIN');const found=await client.query('SELECT id FROM customer_users WHERE id=$1 FOR UPDATE',[id]);if(!found.rows[0]){await client.query('ROLLBACK');return res.status(404).json({error:'الزبون غير موجود'})}await client.query('UPDATE orders SET customer_user_id=NULL WHERE customer_user_id=$1',[id]);await client.query('UPDATE order_reviews SET customer_user_id=NULL WHERE customer_user_id=$1',[id]);await client.query('UPDATE notifications SET customer_user_id=NULL WHERE customer_user_id=$1',[id]);await client.query('DELETE FROM password_reset_requests WHERE customer_user_id=$1',[id]);await client.query('DELETE FROM customer_users WHERE id=$1',[id]);await client.query('COMMIT');await audit(req,'DELETE_CUSTOMER','customer',id);res.json({ok:true})}catch(e){try{await client.query('ROLLBACK')}catch{};next(e)}finally{client.release()}});
+app.get('/api/admin/phone-orders/customer', auth, requirePerm('RECEIVE_PHONE_ORDERS'), async (req,res,next)=>{
+  try {
+    const phone=String(req.query?.phone||'').trim();
+    const normalized=phone.replace(/\D/g,'');
+    if(normalized.length<6) return res.json({customer:null});
+    const q=await query(`SELECT id,name,phone,email,active FROM customer_users WHERE regexp_replace(phone,'[^0-9]','','g')=$1 AND active=true LIMIT 1`,[normalized]);
+    if(!q.rows[0]) return res.json({customer:null});
+    const c=q.rows[0];
+    const a=await query('SELECT id,label,address,is_default FROM customer_addresses WHERE customer_user_id=$1 ORDER BY is_default DESC,id',[c.id]);
+    res.json({customer:{...c,id:Number(c.id),addresses:a.rows.map(x=>({...x,id:Number(x.id),is_default:!!x.is_default}))}});
+  } catch(e){next(e)}
+});
+
+app.post('/api/admin/phone-orders', auth, requireCsrf, requirePerm('RECEIVE_PHONE_ORDERS'), async (req,res,next)=>{
+  try {
+    const customerName=String(req.body?.customerName||'').trim();
+    const customerPhone=String(req.body?.customerPhone||'').trim();
+    const address=String(req.body?.address||'').trim();
+    const notes=String(req.body?.notes||'').trim();
+    const zoneId=req.body?.zoneId==null||req.body.zoneId===''?null:Number(req.body.zoneId);
+    const items=Array.isArray(req.body?.items)?req.body.items:[];
+    if(!customerName||!customerPhone||!items.length)return res.status(400).json({error:'يرجى إدخال اسم الزبون ورقم الهاتف واختيار صنف واحد على الأقل'});
+    if(customerName.length>100||customerPhone.length>30||address.length>300||notes.length>500)return res.status(400).json({error:'بعض بيانات الطلب طويلة جداً'});
+    if(zoneId!==null&&(!Number.isInteger(zoneId)||zoneId<1))return res.status(400).json({error:'منطقة التوصيل غير صالحة'});
+    const zone=zoneId===null?null:(await query('SELECT id,name,fee,min_order FROM delivery_zones WHERE id=$1 AND active=true',[zoneId])).rows[0];
+    if(zoneId!==null&&!zone)return res.status(400).json({error:'منطقة التوصيل غير موجودة أو غير فعالة'});
+    if(zone&& !address)return res.status(400).json({error:'يرجى إدخال عنوان التوصيل'});
+    const ids=items.map(x=>Number(x?.itemId)).filter(n=>Number.isInteger(n)&&n>0);
+    const offerIds=items.map(x=>Number(x?.offerId)).filter(n=>Number.isInteger(n)&&n>0);
+    const itemRows=ids.length?(await query(`SELECT * FROM items WHERE id IN (${ids.map((_,i)=>`$${i+1}`).join(',')}) AND available=true`,ids)).rows:[];
+    const offerRows=offerIds.length?(await query(`SELECT * FROM offers WHERE id IN (${offerIds.map((_,i)=>`$${i+1}`).join(',')}) AND active=true`,offerIds)).rows:[];
+    const itemMap=new Map(itemRows.map(r=>[Number(r.id),r])); const offerMap=new Map(offerRows.map(r=>[Number(r.id),r]));
+    const normalized=[]; let subtotal=0;
+    for(const x of items){
+      const qty=Number(x?.quantity); if(!Number.isInteger(qty)||qty<1||qty>99)return res.status(400).json({error:'كمية غير صالحة في الطلب'});
+      const offerId=Number(x?.offerId); if(Number.isInteger(offerId)&&offerId>0&&offerMap.has(offerId)){const o=offerMap.get(offerId),price=Number(o.price);normalized.push({itemId:`offer-${offerId}`,offerId,name:o.title,price,quantity:qty,type:'offer'});subtotal+=price*qty;continue;}
+      const itemId=Number(x?.itemId); if(!Number.isInteger(itemId)||!itemMap.has(itemId))return res.status(400).json({error:'بعض الأصناف غير متاحة حالياً'});
+      const r=itemMap.get(itemId); let options=[]; try{const parsed=JSON.parse(r.options_json||'[]');options=Array.isArray(parsed)?parsed:[]}catch{}
+      const selected=Array.isArray(x.options)?x.options.map(String):[]; const allowed=new Map(options.map(o=>[String(o.name),Number(o.price||0)])); if(selected.some(n=>!allowed.has(n)))return res.status(400).json({error:`خيارات التخصيص للصنف «${r.name}» غير صالحة`});
+      const extra=selected.reduce((sum,n)=>sum+Math.max(0,allowed.get(n)),0),price=Number(r.price)+extra; normalized.push({itemId,name:r.name,price,quantity:qty,type:'item',options:selected}); subtotal+=price*qty;
+    }
+    if(normalized.length!==items.length)return res.status(400).json({error:'بعض الأصناف المختارة غير متاحة حالياً'});
+    if(zone&&subtotal<Number(zone.min_order))return res.status(400).json({error:`الحد الأدنى للطلب في منطقة «${zone.name}» هو ${Number(zone.min_order).toLocaleString('ar-LB')}`});
+    const deliveryFee=zone?Number(zone.fee):0; const total=subtotal+deliveryFee; const estimated=new Date(Date.now()+45*60000);
+    const cp=await query(`SELECT id FROM customer_users WHERE regexp_replace(phone,'[^0-9]','','g')=$1 AND active=true LIMIT 1`,[customerPhone.replace(/\D/g,'')]);
+    const customerUserId=cp.rows[0]?Number(cp.rows[0].id):null;
+    const result=await query(`INSERT INTO orders(customer_name,customer_phone,address,notes,items_json,total,customer_user_id,delivery_fee,estimated_ready_at,order_channel,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'phone',$10) RETURNING id`,[customerName,customerPhone,address,notes,JSON.stringify(normalized),total,customerUserId,deliveryFee,estimated,req.user.id]);
+    const id=Number(result.rows[0].id);
+    await query('INSERT INTO order_status_history(order_id,old_status,new_status,changed_by,changed_by_name) VALUES($1,$2,$3,$4,$5)',[id,null,'new',req.user.id,req.user.name||req.user.email||'موظف الهاتف']);
+    await audit(req,'CREATE_PHONE_ORDER','order',id,`customer=${customerPhone};total=${total}`);
+    let whatsappSent=false; try{whatsappSent=await sendWhatsAppOrder({id,customerName,customerPhone,address,notes,items:normalized,total});if(whatsappSent)await query('UPDATE orders SET whatsapp_sent=true WHERE id=$1',[id])}catch(e){console.error('WhatsApp error:',e.message)}
+    res.status(201).json({id,total,subtotal,deliveryFee,zoneName:zone?.name||'استلام من الفرنية',whatsappSent,estimatedReadyAt:estimated});
+  }catch(e){next(e)}
+});
+
 app.get('/api/admin/data', auth, async (req, res, next) => {
   try {
     const isAdmin = req.user.role === 'admin';
     const canOrders = isAdmin || req.user.permissions.includes('RECEIVE_ORDERS');
-    const canItems = isAdmin || req.user.permissions.includes('MANAGE_ITEMS');
+    const canPhoneOrders = isAdmin || req.user.permissions.includes('RECEIVE_PHONE_ORDERS');
+    const canItems = isAdmin || req.user.permissions.includes('MANAGE_ITEMS') || canPhoneOrders;
     const canSettings = isAdmin || req.user.permissions.includes('MANAGE_SETTINGS');
     const canUsers = isAdmin || req.user.permissions.includes('MANAGE_USERS');
 
@@ -938,7 +994,7 @@ app.post('/api/admin/users', auth, requireCsrf, requireAdmin, requirePerm('MANAG
     const password = String(req.body?.password || '');
     const role = String(req.body?.role || 'staff');
     const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
-    const allowedPermissions = new Set(['MANAGE_ITEMS','RECEIVE_ORDERS','MANAGE_SETTINGS','MANAGE_USERS','ADD_ADMIN']);
+    const allowedPermissions = new Set(['MANAGE_ITEMS','RECEIVE_ORDERS','RECEIVE_PHONE_ORDERS','MANAGE_SETTINGS','MANAGE_USERS','ADD_ADMIN']);
 
     if (!name || name.length > 100 || !email || email.length > 254 || !password || password.length < 10 || password.length > 200) {
       return res.status(400).json({ error: 'بيانات المستخدم غير صالحة. كلمة المرور يجب أن تكون 10 أحرف على الأقل.' });
@@ -977,7 +1033,7 @@ app.put('/api/admin/users/:id', auth, requireCsrf, requireAdmin, requirePerm('MA
     const role = String(req.body?.role ?? u.role);
     const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
     const active = req.body?.active !== false;
-    const allowedPermissions = new Set(['MANAGE_ITEMS','RECEIVE_ORDERS','MANAGE_SETTINGS','MANAGE_USERS','ADD_ADMIN']);
+    const allowedPermissions = new Set(['MANAGE_ITEMS','RECEIVE_ORDERS','RECEIVE_PHONE_ORDERS','MANAGE_SETTINGS','MANAGE_USERS','ADD_ADMIN']);
 
     if (!name || name.length > 100 || !email || email.length > 254 ||
         !['staff','admin'].includes(role) || permissions.some(p => !allowedPermissions.has(p))) {
